@@ -1,0 +1,11 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "sam-app-5"
+resolve_s3 = true
+s3_prefix = "sam-app-5"
+region = "ap-southeast-2"
+profile = "668426476831"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "DBHost=\"wdr-dev.cluster-cf4kw8i8apdx.ap-southeast-1.rds.amazonaws.com\" DBName=\"wdr\" DBUser=\"postgres\" DBPort=\"5432\" DBPassword=\"dl8!RHGiz0Qek![J$5u0.dvYJ_7_\""
+image_repositories = []
