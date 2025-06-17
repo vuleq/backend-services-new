@@ -1,9 +1,9 @@
-import { executeQuery, deleteRecord } from '/opt/nodejs/db';
+import { deleteRecord } from '/opt/nodejs/db';
 import { ApiResponse, LambdaResponse } from '/opt/nodejs/api-model';
 
 export const handler = async (event: any) => {
   console.log('Receive Event:', event);
-  const tradeSectionId = event.id;
+  const tradeSectionId = event?.pathParameters?.id;
   try {
     const result = await deleteRecord('trade_sections', { id: tradeSectionId });
     console.log('Result:', result);

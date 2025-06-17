@@ -1,63 +1,129 @@
 import { executeQuery } from '/opt/nodejs/db';
-import { ApiResponse, LambdaResponse } from '/opt/nodejs/api-model';
+import { ApiResponse, LambdaResponse, ResponsePage } from '/opt/nodejs/api-model';
 
-const LIKE = "LIKE";
+type SortOrder = 'ASC' | 'DESC';
+type SortColumn = 'name' | 'created_by' | 'create_at';
+
+interface QueryParams {
+  name?: string;
+  isDeleted: boolean;  // Default to false, so not optional
+  createdBy?: string;
+  sortBy: SortColumn;
+  orderBy: SortOrder;
+  limit: number;
+  offset: number;
+}
 
 export const handler = async (event: any) => {
   console.log('Receive Event:', event);
-  const name = event.queryStringParameters?.name;
-  const isDeleted = event.queryStringParameters?.isDeleted === 'true' ? true : false;
-  const createdBy = event.queryStringParameters?.createdBy;
-  const limit = parseInt(event.queryStringParameters?.limit ?? '', 10);
-  const offset = parseInt(event.queryStringParameters?.offset ?? '', 10);
-  const oderBy = event.queryStringParameters?.oderBy;
-  const sortBy = event.queryStringParameters?.sortBy ?? 'ASC';
-  if (isNaN(limit) || limit <= 0) {
-    return new LambdaResponse(400, new ApiResponse(false, null, "Invalid 'limit' query parameter. Must be a number greater than 0."));
-  }
-  if (isNaN(offset) || offset < 0) {
-    return new LambdaResponse(400, new ApiResponse(false, null, "Invalid 'offset' query parameter. Must be a number greater or equal 0."));
-  }
+  
   try {
-    let selectSql = 'SELECT * FROM trade_sections';
-    let paramCount = 0;
-    let selectParams: any[] = [];
-    ({ paramCount, selectSql } = setParam(name, paramCount, selectSql, selectParams, 'name', LIKE));
-    ({ paramCount, selectSql } = setParam(createdBy, paramCount, selectSql, selectParams, 'created_by', ""));
-    ({ paramCount, selectSql } = setParam(isDeleted, paramCount, selectSql, selectParams, 'is_deleted', ""));
-    if (oderBy) {
-      selectSql = selectSql + ' ORDER BY ' + oderBy + ' ' + sortBy;
+    // Parse and validate query parameters
+    let queryParams: QueryParams;
+    try {
+      queryParams = parseQueryParameters(event.queryStringParameters || {});
+    } catch (error: any) {
+      return new LambdaResponse(400, new ApiResponse(false, null, error.message));
     }
-    if (limit > 0 && offset >= 0) {
-      selectSql = selectSql + ' LIMIT ' + limit + ' OFFSET ' + offset;
+
+    // Validate createdBy parameter format
+    if (queryParams.createdBy && !queryParams.createdBy.match(/^[a-zA-Z0-9_]+$/)) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid createdBy format'));
     }
-    selectSql = selectSql + ';';
-    console.log('Select SQL:', selectSql);
-    console.log('Select Params:', selectParams);
-    const result = await executeQuery(selectSql, selectParams);
+
+    const { query, params, conditions } = buildQuery(queryParams);
+
+    console.log('Query: ', query);
+    console.log('Params: ', params);
+
+    // Execute query
+    const result = await executeQuery(query, params);
+
     console.log('Result: ', result);
-    return new LambdaResponse(200, new ApiResponse(true, result.data));
+
+    if (!result.success) {
+      return new ApiResponse(false, null, 'Error executing query', result.error);
+    }
+
+    // Get total count for pagination
+    const countQuery = 'SELECT COUNT(*) as total FROM trade_sections' + 
+      (conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '');
+
+    // Use the same parameters as the main query but exclude pagination parameters
+    const countParams = params.slice(0, params.length - 2);
+    const countResult = await executeQuery(countQuery, countParams);
+
+    if (!countResult.success) {
+      return new LambdaResponse(500, new ApiResponse(false, null, 'Error executing count query', result.error));
+    }
+
+    const total = parseInt(countResult.data[0].total, 10);
+
+    return new LambdaResponse(200, new ResponsePage(queryParams.offset, queryParams.limit, total, result.data));
   } catch (error: any) {
     console.error('Error:', error);
     return new LambdaResponse(500, new ApiResponse(false, null, 'Internal server error', error.message));
   }
 };
 
-function setParam(value: any, paramCount: number, selectSql: string, selectParams: any[], paramName: string, operator: string) {
-  if (value) {
-    if (paramCount === 0) {
-      selectSql += ' WHERE';
-    } else {
-      selectSql += ' AND';
-    }
-    paramCount++;
-    if (operator === LIKE) {
-      selectSql += ` ${paramName} ILIKE $${paramCount}`;
-      selectParams.push(`%${value}%`);
-    } else {
-      selectSql += ` ${paramName} = $${paramCount}`;
-      selectParams.push(value);
-    }
+function parseQueryParameters(params: Record<string, any>): QueryParams {
+  const validSortColumns: SortColumn[] = ['name', 'created_by', 'create_at'];
+  const sortBy = params['sort-by'];
+  
+  // Parse and validate limit/offset
+  const limit = parseInt(params.limit, 10) || 10;
+  const offset = parseInt(params.offset, 10) || 0;
+  
+  if (limit <= 0 || limit > 100) {
+    throw new Error("Invalid 'limit' parameter. Must be between 1 and 100.");
   }
-  return { paramCount, selectSql };
+  
+  if (offset < 0) {
+    throw new Error("Invalid 'offset' parameter. Must be greater than or equal to 0.");
+  }
+  
+  return {
+    name: params.name ? params.name.trim() : undefined,
+    isDeleted: params.isDeleted ? params.isDeleted.toLowerCase() === 'true' : false,
+    createdBy: params['created-by'] ? params['created-by'].trim() : undefined,
+    sortBy: validSortColumns.includes(sortBy as SortColumn) ? sortBy as SortColumn : 'create_at',
+    orderBy: params['order-by']?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC',
+    limit,
+    offset
+  };
+}
+
+function buildQuery(params: QueryParams): { query: string, params: any[], conditions: string[] } {
+  const conditions: string[] = [];
+  const queryParams: any[] = [];
+  let paramIndex = 1;
+
+  if (params.name) {
+    conditions.push(`name ILIKE ${paramIndex++}`);
+    queryParams.push(`%${params.name}%`);
+  }
+
+  if (params.createdBy) {
+    conditions.push(`created_by = ${paramIndex++}`);
+    queryParams.push(params.createdBy);
+  }
+  
+  // Always include is_deleted condition, defaulting to false if not specified
+  conditions.push(`is_deleted = ${paramIndex++}`);
+  queryParams.push(params.isDeleted);
+  
+  // Build the query
+  let query = 'SELECT * FROM trade_sections';
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+  
+  // Add sorting
+  query += ` ORDER BY ${params.sortBy} ${params.orderBy}`;
+  
+  // Add pagination
+  query += ` LIMIT ${paramIndex++} OFFSET ${paramIndex++}`;
+  queryParams.push(params.limit, params.offset);
+  
+  return { query, params: queryParams, conditions };
 }
