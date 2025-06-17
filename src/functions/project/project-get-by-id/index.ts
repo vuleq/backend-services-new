@@ -3,7 +3,12 @@ import { ApiResponse, LambdaResponse } from '/opt/nodejs/api-model';
 
 export const handler = async (event: any) => {
   console.log('Receive Event:', event);
-  const id = event.id;
+  const id = event?.pathParameters?.id;
+
+  if (!id) {
+    return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid request'));
+  }
+
   try {
     const sql = 'SELECT * FROM projects WHERE id = $1;';
     const params = [id];
