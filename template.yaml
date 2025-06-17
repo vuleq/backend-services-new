@@ -143,6 +143,20 @@ Resources:
             Path: /project/search
             Method: post
 
+  ProjectUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: project-update-by-id-function
+      Description: Update project by ID
+      CodeUri: dist/functions/project/project-update-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /project/{id}
+            Method: put
+
   # --- Report Functions ---
   ReportCreateNewTemplateFunction:
     Type: AWS::Serverless::Function

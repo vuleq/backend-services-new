@@ -33,6 +33,18 @@ export const handler = async (event: any) => {
 
   try {
     const queryParams = parseQueryParameters(event.queryStringParameters || {});
+
+    if (queryParams.arrivalDate && isNaN(Date.parse(queryParams.arrivalDate))) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid arrivalDate format'));
+    }
+
+    if (queryParams.departureDate && isNaN(Date.parse(queryParams.departureDate))) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid departureDate format'));
+    }
+
+    if (queryParams.status && !(queryParams.status in projectStatus)) {
+      return new LambdaResponse(400, new ApiResponse(false, null, `Invalid status value. Allowed: ${Object.keys(projectStatus).join(', ')}`));
+    }
     
     const { query, params, conditions } = buildQuery(queryParams);
     
@@ -124,7 +136,7 @@ function buildQuery(params: QueryParams): { query: string, params: any[], condit
   }
   
   if (params.vesselName) {
-    conditions.push(`vessel_name LIKE ${paramIndex++}`);
+    conditions.push(`vessel_name ILIKE ${paramIndex++}`);
     queryParams.push(`%${params.vesselName}%`);
   }
   
