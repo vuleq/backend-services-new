@@ -34,6 +34,7 @@ interface ProjectUpdateBody {
 export const handler = async (event: any) => {
   console.log('Receive Event:', event);
 
+  // Parse and validate request body
   let body: ProjectUpdateBody = {};
   try {
     body = JSON.parse(event.body || '{}');
@@ -41,6 +42,7 @@ export const handler = async (event: any) => {
     return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid JSON in request body'));
   }
 
+  // Extract and validate project ID
   const projectId = event?.pathParameters?.id;
   console.log('Project Id:', projectId);
 
@@ -52,47 +54,53 @@ export const handler = async (event: any) => {
     return new LambdaResponse(400, new ApiResponse(false, null, 'Request body is required'));
   }
 
+  // Sanitize string inputs
+  Object.keys(body).forEach(key => {
+    const value = (body as any)[key];
+    if (typeof value === 'string') {
+      (body as any)[key] = value.trim();
+    }
+  });
+
   // Validate status
   if (body.status && !(body.status in projectStatus)) {
     return new LambdaResponse(400, new ApiResponse(false, null, `Invalid status value. Allowed: ${Object.keys(projectStatus).join(', ')}`));
   }
 
-  // validate date fields
-  if (body.arrivalDate && isNaN(Date.parse(body.arrivalDate))) {
-    return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid arrivalDate format'));
-  }
-
-  if (body.departureDate && isNaN(Date.parse(body.departureDate))) {
-    return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid departureDate format'));
-  }
-
-  if (body.dockingDate && isNaN(Date.parse(body.dockingDate))) {
-    return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid dockingDate format'));
-  }
-
-  if (body.undockingDate && isNaN(Date.parse(body.undockingDate))) {
-    return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid undockingDate format'));
-  }
-
-  if (body.planStartDate && isNaN(Date.parse(body.planStartDate))) {
-    return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid planStartDate format'));
-  }
-
-  if (body.planCompleteDate && isNaN(Date.parse(body.planCompleteDate))) {
-    return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid planCompleteDate format'));
-  }
-
-  if (body.actualStartDate && isNaN(Date.parse(body.actualStartDate))) {
-    return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid actualStartDate format'));
-  }
-
-  if (body.actualCompleteDate && isNaN(Date.parse(body.actualCompleteDate))) {
-    return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid actualCompleteDate format'));
+  try {
+    // Validate individual date formats
+    validateDate(body.arrivalDate, 'arrivalDate');
+    validateDate(body.departureDate, 'departureDate');
+    validateDate(body.dockingDate, 'dockingDate');
+    validateDate(body.undockingDate, 'undockingDate');
+    validateDate(body.planStartDate, 'planStartDate');
+    validateDate(body.planCompleteDate, 'planCompleteDate');
+    validateDate(body.actualStartDate, 'actualStartDate');
+    validateDate(body.actualCompleteDate, 'actualCompleteDate');
+    
+    // Validate date ranges
+    if (body.arrivalDate && body.departureDate && !isValidDate(body.arrivalDate, body.departureDate)) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Arrival date cannot be after departure date'));
+    }
+    
+    if (body.dockingDate && body.undockingDate && !isValidDate(body.dockingDate, body.undockingDate)) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Docking date cannot be after undocking date'));
+    }
+    
+    if (body.planStartDate && body.planCompleteDate && !isValidDate(body.planStartDate, body.planCompleteDate)) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Plan start date cannot be after plan complete date'));
+    }
+    
+    if (body.actualStartDate && body.actualCompleteDate && !isValidDate(body.actualStartDate, body.actualCompleteDate)) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Actual start date cannot be after actual complete date'));
+    }
+  } catch (error: any) {
+    return new LambdaResponse(400, new ApiResponse(false, null, error.message));
   }
 
   try {
     // Build data object with column names as keys
-    const projectData = {
+    const projectData: Record<string, any> = {
       owner_rep: body.ownerRep,
       ship_contact: body.shipContact,
       project_manager: body.projectManager,
@@ -114,7 +122,11 @@ export const handler = async (event: any) => {
     };
 
     // Remove undefined fields
-    Object.keys(projectData).forEach(key => (projectData as any)[key] === undefined && delete (projectData as any)[key]);
+    Object.keys(projectData).forEach(key => {
+      if (projectData[key] === undefined) {
+        delete projectData[key];
+      }
+    });
 
     console.log('Project Data:', projectData);
 
@@ -129,4 +141,18 @@ export const handler = async (event: any) => {
     console.error('Error:', error);
     return new LambdaResponse(500, new ApiResponse(false, null, 'Internal server error', error.message));
   }
+};
+
+const isValidDate = (start: string, end: string): boolean => {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  return startDate <= endDate;
+};
+
+// Validate date fields
+const validateDate = (dateField: string | undefined, fieldName: string): boolean => {
+  if (dateField && isNaN(Date.parse(dateField))) {
+    throw new Error(`Invalid ${fieldName} format. Use YYYY-MM-DD format.`);
+  }
+  return true;
 };

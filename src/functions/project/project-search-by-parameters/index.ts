@@ -32,18 +32,35 @@ export const handler = async (event: any) => {
   console.log('Receive Event:', event);
 
   try {
-    const queryParams = parseQueryParameters(event.queryStringParameters || {});
+    // Parse and validate query parameters
+    let queryParams: QueryParams;
+    try {
+      queryParams = parseQueryParameters(event.queryStringParameters || {});
+    } catch (error: any) {
+      return new LambdaResponse(400, new ApiResponse(false, null, error.message));
+    }
 
+    // Validate date formats
     if (queryParams.arrivalDate && isNaN(Date.parse(queryParams.arrivalDate))) {
-      return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid arrivalDate format'));
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid arrivalDate format. Use YYYY-MM-DD format.'));
     }
 
     if (queryParams.departureDate && isNaN(Date.parse(queryParams.departureDate))) {
-      return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid departureDate format'));
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid departureDate format. Use YYYY-MM-DD format.'));
     }
 
+    // Validate status value
     if (queryParams.status && !(queryParams.status in projectStatus)) {
       return new LambdaResponse(400, new ApiResponse(false, null, `Invalid status value. Allowed: ${Object.keys(projectStatus).join(', ')}`));
+    }
+    
+    // Validate date range if both dates are provided
+    if (queryParams.arrivalDate && queryParams.departureDate) {
+      const arrival = new Date(queryParams.arrivalDate);
+      const departure = new Date(queryParams.departureDate);
+      if (arrival > departure) {
+        return new LambdaResponse(400, new ApiResponse(false, null, 'Arrival date cannot be after departure date'));
+      }
     }
     
     const { query, params, conditions } = buildQuery(queryParams);
@@ -64,7 +81,9 @@ export const handler = async (event: any) => {
     const countQuery = 'SELECT COUNT(*) as total FROM projects' + 
       (conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '');
 
-    const countResult = await executeQuery(countQuery, params.slice(0, -2));
+    // Use the same parameters as the main query but exclude pagination parameters
+    const countParams = params.slice(0, params.length - 2);
+    const countResult = await executeQuery(countQuery, countParams);
 
     if (!countResult.success) {
       return new LambdaResponse(500, new ApiResponse(false, null, 'Error executing count query', result.error));
@@ -83,20 +102,37 @@ function parseQueryParameters(params: Record<string, any>): QueryParams {
   const validSortColumns: SortColumn[] = ['create_date', 'arrival_date', 'departure_date', 'vessel_name', 'status'];
   const sortBy = params['sort-by'];
   
+  // Parse and validate limit/offset
+  const limit = parseInt(params.limit, 10) || 10;
+  const offset = parseInt(params.offset, 10) || 0;
+  
+  if (limit <= 0 || limit > 100) {
+    throw new Error("Invalid 'limit' parameter. Must be between 1 and 100.");
+  }
+  
+  if (offset < 0) {
+    throw new Error("Invalid 'offset' parameter. Must be greater than or equal to 0.");
+  }
+  
+  // Sanitize string inputs
+  const sanitizeString = (value: string | undefined): string | undefined => {
+    return value ? value.trim() : undefined;
+  };
+  
   return {
-    mainCode: params['main-code'],
-    srm: params.srm,
-    safetyOfficer: params['safety-officer'],
-    projectManager: params['project-manager'],
+    mainCode: sanitizeString(params['main-code']),
+    srm: sanitizeString(params.srm),
+    safetyOfficer: sanitizeString(params['safety-officer']),
+    projectManager: sanitizeString(params['project-manager']),
     status: params.status as ProjectStatus,
-    commercialOfficer: params['commercial-officer'],
-    vesselName: params['vessel-name'],
-    arrivalDate: params['arrival-date'],
-    departureDate: params['departure-date'],
+    commercialOfficer: sanitizeString(params['commercial-officer']),
+    vesselName: sanitizeString(params['vessel-name']),
+    arrivalDate: sanitizeString(params['arrival-date']),
+    departureDate: sanitizeString(params['departure-date']),
     sortBy: validSortColumns.includes(sortBy as SortColumn) ? sortBy as SortColumn : 'create_date',
     orderBy: params['order-by']?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC',
-    limit: parseInt(params.limit, 10) || 10,
-    offset: parseInt(params.offset, 10) || 0
+    limit,
+    offset
   };
 }
 
