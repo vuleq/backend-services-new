@@ -39,7 +39,6 @@ interface JobCreateBody {
   status?: JobStatusKey;
   projectId?: string;
   mainJobId?: string;
-  isWDR?: boolean
 }
 
 export const handler = async (event: any) => {
@@ -118,7 +117,7 @@ export const handler = async (event: any) => {
       status: status,
       project_id: body.projectId,
       main_job_id: body.mainJobId || null,
-      is_wdr: body.isWDR ?? true, // Use nullish coalescing to only default when undefined
+      is_wdr: true
     };
 
     console.log('Job Data:', jobData);

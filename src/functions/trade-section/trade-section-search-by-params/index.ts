@@ -6,7 +6,6 @@ type SortColumn = 'name' | 'created_by' | 'create_at';
 
 interface QueryParams {
   name?: string;
-  isDeleted: boolean;  // Default to false, so not optional
   createdBy?: string;
   sortBy: SortColumn;
   orderBy: SortOrder;
@@ -84,7 +83,6 @@ function parseQueryParameters(params: Record<string, any>): QueryParams {
   
   return {
     name: params.name ? params.name.trim() : undefined,
-    isDeleted: params.isDeleted ? params.isDeleted.toLowerCase() === 'true' : false,
     createdBy: params['created-by'] ? params['created-by'].trim() : undefined,
     sortBy: validSortColumns.includes(sortBy as SortColumn) ? sortBy as SortColumn : 'create_at',
     orderBy: params['order-by']?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC',
@@ -110,7 +108,7 @@ function buildQuery(params: QueryParams): { query: string, params: any[], condit
   
   // Always include is_deleted condition, defaulting to false if not specified
   conditions.push(`is_deleted = ${paramIndex++}`);
-  queryParams.push(params.isDeleted);
+  queryParams.push(false);
   
   // Build the query
   let query = 'SELECT * FROM trade_sections';

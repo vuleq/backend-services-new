@@ -30,9 +30,6 @@ interface JobUpdateBody {
   progress?: string | number; // Can be provided as string or number
   remark?: string;
   status?: JobStatusKey;
-  projectId?: string; // Used only for validation, not for updates
-  mainJobId?: string; // Used only for validation, not for updates
-  isWDR?: boolean
 }
 
 export const handler = async (event: any) => {
@@ -128,7 +125,6 @@ export const handler = async (event: any) => {
     }
     if (body.remark !== undefined) jobData.remark = body.remark;
     if (body.status !== undefined) jobData.status = jobStatusValue;
-    if (body.isWDR !== undefined) jobData.is_wdr = body.isWDR;
     
     // Note: projectId and mainJobId are not included as they cannot be updated
 
@@ -150,16 +146,6 @@ export const handler = async (event: any) => {
     console.log('Current Job:', currentJob);
     if (currentJob.status === jobStatus['WDR COMPLETED'] || currentJob.status ===  jobStatus['WDR DRAFT']) {
       return new LambdaResponse(400, new ApiResponse(false, null, 'Cannot update a job with WDR COMPLETED or WDR DRAFT status', null));
-    }
-
-    // If mainJobId or projectId are provided, verify they match the current values
-    // These are included only for validation, not for updates
-    if (body.mainJobId !== undefined && currentJob.main_job_id !== body.mainJobId) {
-      return new LambdaResponse(400, new ApiResponse(false, null, 'Changing the main job is not allowed', null));
-    }
-
-    if (body.projectId !== undefined && currentJob.project_id !== body.projectId) {
-      return new LambdaResponse(400, new ApiResponse(false, null, 'Changing the project is not allowed', null));
     }
     
     // If no fields to update, return early

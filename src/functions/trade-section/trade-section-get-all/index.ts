@@ -3,7 +3,7 @@ import { ApiResponse, LambdaResponse } from '/opt/nodejs/api-model';
 
 export const handler = async (event: any) => {
   try {
-    let selectSql = 'SELECT * FROM trade_sections;';
+    let selectSql = 'SELECT * FROM trade_sections WHERE is_deleted = false;';
     let selectParams: any[] = [];
     const result = await executeQuery(selectSql, selectParams);
 

@@ -10,7 +10,7 @@ export const handler = async (event: any) => {
   }
 
   try {
-    const result = await updateRecord('trade_sections', {is_deleted : true} ,{ id: tradeSectionId });
+    const result = await updateRecord('trade_sections', {is_deleted : true , updated_at: new Date().toISOString()} ,{ id: tradeSectionId });
     console.log('Result:', result);
     if (result.error) {
       return new LambdaResponse(404, new ApiResponse(false, null, 'Trade section not found or already deleted!', result));

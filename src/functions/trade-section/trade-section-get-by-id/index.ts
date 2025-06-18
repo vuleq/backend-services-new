@@ -10,7 +10,7 @@ export const handler = async (event: any) => {
   }
 
   try {
-    const sql = 'SELECT * FROM trade_sections WHERE id = $1;';
+    const sql = 'SELECT * FROM trade_sections WHERE id = $1 AND is_deleted = false;';
     const params = [tradeSectionId];
     const result = await executeQuery(sql, params);
     console.log('Select result:', result);

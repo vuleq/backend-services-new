@@ -25,7 +25,7 @@ export const handler = async (event: any) => {
     if (result.success && result.rowCount && result.rowCount > 0) {
       return new LambdaResponse(200, new ApiResponse(true, result.data, 'Trade section update successfully'));
     }
-    return new LambdaResponse(500, new ApiResponse(false, null, 'Trade section update failed!', result.error));
+    return new LambdaResponse(404, new ApiResponse(false, null, 'Trade section not found or not updated!', result.error));
   } catch (error: any) {
     console.error('Error:', error);
     return new LambdaResponse(500, new ApiResponse(false, null, 'Internal server error', error.message));
