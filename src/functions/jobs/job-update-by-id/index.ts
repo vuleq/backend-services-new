@@ -138,8 +138,12 @@ export const handler = async (event: any) => {
     const currentJobParams = [jobId];
     const currentJobResult = await executeQuery(currentJobSql, currentJobParams);
 
-    if (!currentJobResult.success || currentJobResult.rowCount === 0) {
-      return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid Job id', null));
+    if (currentJobResult.error) {
+      return new LambdaResponse(404, new ApiResponse(false, null, 'Error fetching jobs', currentJobResult.error));
+    }
+
+    if (currentJobResult.success && currentJobResult.rowCount === 0) {
+      return new LambdaResponse(404, new ApiResponse(false, null, 'No jobs found'));
     }
 
     const currentJob = currentJobResult.data[0];

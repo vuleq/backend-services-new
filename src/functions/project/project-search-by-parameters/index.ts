@@ -73,8 +73,8 @@ export const handler = async (event: any) => {
 
     console.log('Result: ', result);
 
-    if (!result.success) {
-      return new ApiResponse(false, null, 'Error executing query', result.error);
+    if (result.error) {
+      return new LambdaResponse(404, new ApiResponse(false, null, 'Error fetching projects', result.error));
     }
 
     // Get total count for pagination
@@ -85,7 +85,7 @@ export const handler = async (event: any) => {
     const countParams = params.slice(0, params.length - 2);
     const countResult = await executeQuery(countQuery, countParams);
 
-    if (!countResult.success) {
+    if (countResult.error) {
       return new LambdaResponse(500, new ApiResponse(false, null, 'Error executing count query', result.error));
     }
 
