@@ -313,6 +313,63 @@ Resources:
             Path: /trade-section/{id}
             Method: put
 
+  # --- Job Functions ---
+  JobCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-create-function
+      Description: Create a new job
+      CodeUri: dist/functions/jobs/job-create
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job
+            Method: post
+
+    JobGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-get-all-function
+      Description: Get all job
+      CodeUri: dist/functions/jobs/job-get-all
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job
+            Method: get
+
+  JobUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-update-by-id-function
+      Description: Update job by ID
+      CodeUri: dist/functions/jobs/job-update-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job/{id}
+            Method: put
+
+    JobGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-get-by-id-function
+      Description: Get job by ID
+      CodeUri: dist/functions/jobs/job-get-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job/{id}
+            Method: get
+
   # --- User Functions ---
   UserGetUserByIdFunction:
     Type: AWS::Serverless::Function

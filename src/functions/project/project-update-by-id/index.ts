@@ -1,4 +1,4 @@
-import { updateRecord } from '/opt/nodejs/db';
+import { updateRecord, executeQuery } from '/opt/nodejs/db';
 import { LambdaResponse, ApiResponse } from '/opt/nodejs/api-model';
 
 // Define allowed project status and type for request body
@@ -93,6 +93,23 @@ export const handler = async (event: any) => {
     
     if (body.actualStartDate && body.actualCompleteDate && !isValidDate(body.actualStartDate, body.actualCompleteDate)) {
       return new LambdaResponse(400, new ApiResponse(false, null, 'Actual start date cannot be after actual complete date'));
+    }
+
+    const sql = 'SELECT * FROM projects WHERE id = $1;';
+    const params = [projectId];
+    const result = await executeQuery(sql, params);
+    console.log('Select result:', result);
+
+    if (result.error) {
+      return new LambdaResponse(500, new ApiResponse(false, null, 'Database error', result.error));
+    }
+    
+    if (!result.data || result.data.length === 0) {
+      return new LambdaResponse(404, new ApiResponse(false, null, 'Project not found!'));
+    }
+
+    if (result.data[0].status === projectStatus['Closed']) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Cannot update a closed project'));
     }
   } catch (error: any) {
     return new LambdaResponse(400, new ApiResponse(false, null, error.message));
