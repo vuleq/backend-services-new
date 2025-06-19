@@ -141,7 +141,7 @@ Resources:
           Properties:
             RestApiId: !Ref ApiGateway
             Path: /project/search
-            Method: post
+            Method: get
 
   ProjectUpdateByIdFunction:
     Type: AWS::Serverless::Function
@@ -212,7 +212,7 @@ Resources:
           Properties:
             RestApiId: !Ref ApiGateway
             Path: /report/search
-            Method: post
+            Method: get
 
   ReportUpdateReportByIdFunction:
     Type: AWS::Serverless::Function
@@ -297,7 +297,7 @@ Resources:
           Properties:
             RestApiId: !Ref ApiGateway
             Path: /trade-section/search
-            Method: post
+            Method: get
 
   TradeSectionUpdateByIdFunction:
     Type: AWS::Serverless::Function
@@ -411,7 +411,7 @@ Resources:
           Properties:
             RestApiId: !Ref ApiGateway
             Path: /user/search
-            Method: post
+            Method: get
 
 # ------------------------------------------------------------
 # Outputs: Information about the deployed resources
