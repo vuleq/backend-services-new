@@ -328,7 +328,7 @@ Resources:
             Path: /job
             Method: post
 
-    JobGetAllFunction:
+  JobGetAllFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: job-get-all-function
@@ -356,7 +356,7 @@ Resources:
             Path: /job/{id}
             Method: put
 
-    JobGetByIdFunction:
+  JobGetByIdFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: job-get-by-id-function
@@ -368,6 +368,20 @@ Resources:
           Properties:
             RestApiId: !Ref ApiGateway
             Path: /job/{id}
+            Method: get
+
+  JobSearchByParametersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-search-by-parameters-function
+      Description: Search jobs by parameters
+      CodeUri: dist/functions/jobs/job-search-by-parameters
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job/search
             Method: get
 
   # --- User Functions ---
