@@ -32,13 +32,7 @@ export const handler = async (event: any) => {
   console.log('Receive Event:', event);
 
   try {
-    // Parse and validate query parameters
-    let queryParams: QueryParams;
-    try {
-      queryParams = parseQueryParameters(event.queryStringParameters || {});
-    } catch (error: any) {
-      return new LambdaResponse(400, new ApiResponse(false, null, error.message));
-    }
+    const queryParams = parseQueryParameters(event.queryStringParameters || {});
 
     // Validate date formats
     if (queryParams.arrivalDate && isNaN(Date.parse(queryParams.arrivalDate))) {
@@ -49,49 +43,36 @@ export const handler = async (event: any) => {
       return new LambdaResponse(400, new ApiResponse(false, null, 'Invalid departureDate format. Use YYYY-MM-DD format.'));
     }
 
-    // Validate status value
+    // Validate status and date range
     if (queryParams.status && !(queryParams.status in projectStatus)) {
-      return new LambdaResponse(400, new ApiResponse(false, null, `Invalid status value. Allowed: ${Object.keys(projectStatus).join(', ')}`));
+      return new LambdaResponse(400, new ApiResponse(false, null, `Invalid status. Allowed: ${Object.keys(projectStatus).join(', ')}`));
     }
     
-    // Validate date range if both dates are provided
-    if (queryParams.arrivalDate && queryParams.departureDate) {
-      const arrival = new Date(queryParams.arrivalDate);
-      const departure = new Date(queryParams.departureDate);
-      if (arrival > departure) {
-        return new LambdaResponse(400, new ApiResponse(false, null, 'Arrival date cannot be after departure date'));
-      }
+    if (queryParams.arrivalDate && queryParams.departureDate && 
+        new Date(queryParams.arrivalDate) > new Date(queryParams.departureDate)) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Arrival date cannot be after departure date'));
     }
     
-    const { query, params, conditions } = buildQuery(queryParams);
+    const { query, params } = buildQuery(queryParams);
     
     console.log('Query: ', query);
     console.log('Params: ', params);
 
-    // Execute query
     const result = await executeQuery(query, params);
 
-    console.log('Result: ', result);
-
-    if (result.error) {
-      return new LambdaResponse(404, new ApiResponse(false, null, 'Error fetching projects', result.error));
+    if (!result.success) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Error fetching projects', result.error));
     }
 
-    // Get total count for pagination
-    const countQuery = 'SELECT COUNT(*) as total FROM projects' + 
-      (conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '');
+    const total = result.data.length > 0 ? parseInt(result.data[0].total_count, 10) : 0;
 
-    // Use the same parameters as the main query but exclude pagination parameters
-    const countParams = params.slice(0, params.length - 2);
-    const countResult = await executeQuery(countQuery, countParams);
+    // Remove total_count from each row
+    const projects = result.data.map((row: { total_count: number; [key: string]: any }) => {
+      const { total_count, ...project } = row;
+      return project;
+    });
 
-    if (countResult.error) {
-      return new LambdaResponse(500, new ApiResponse(false, null, 'Error executing count query', result.error));
-    }
-
-    const total = parseInt(countResult.data[0].total, 10);
-
-    return new ResponsePage(queryParams.offset, queryParams.limit, total, result.data);
+    return new LambdaResponse(200, new ResponsePage(queryParams.offset, queryParams.limit, total, projects));
   } catch (error: any) {
     console.error('Error:', error);
     return new LambdaResponse(500, new ApiResponse(false, null, 'Internal server error', error.message));
@@ -100,43 +81,29 @@ export const handler = async (event: any) => {
 
 function parseQueryParameters(params: Record<string, any>): QueryParams {
   const validSortColumns: SortColumn[] = ['create_date', 'arrival_date', 'departure_date', 'vessel_name', 'status'];
-  const sortBy = params['sort-by'];
+  const limit = Math.min(Math.max(parseInt(params.limit, 10) || 10, 1), 100);
+  const offset = Math.max(parseInt(params.offset, 10) || 0, 0);
   
-  // Parse and validate limit/offset
-  const limit = parseInt(params.limit, 10) || 10;
-  const offset = parseInt(params.offset, 10) || 0;
-  
-  if (limit <= 0 || limit > 100) {
-    throw new Error("Invalid 'limit' parameter. Must be between 1 and 100.");
-  }
-  
-  if (offset < 0) {
-    throw new Error("Invalid 'offset' parameter. Must be greater than or equal to 0.");
-  }
-  
-  // Sanitize string inputs
-  const sanitizeString = (value: string | undefined): string | undefined => {
-    return value ? value.trim() : undefined;
-  };
+  const sanitize = (value: string | undefined) => value?.trim() || undefined;
   
   return {
-    mainCode: sanitizeString(params['main-code']),
-    srm: sanitizeString(params.srm),
-    safetyOfficer: sanitizeString(params['safety-officer']),
-    projectManager: sanitizeString(params['project-manager']),
+    mainCode: sanitize(params['main-code']),
+    srm: sanitize(params.srm),
+    safetyOfficer: sanitize(params['safety-officer']),
+    projectManager: sanitize(params['project-manager']),
     status: params.status as ProjectStatus,
-    commercialOfficer: sanitizeString(params['commercial-officer']),
-    vesselName: sanitizeString(params['vessel-name']),
-    arrivalDate: sanitizeString(params['arrival-date']),
-    departureDate: sanitizeString(params['departure-date']),
-    sortBy: validSortColumns.includes(sortBy as SortColumn) ? sortBy as SortColumn : 'create_date',
+    commercialOfficer: sanitize(params['commercial-officer']),
+    vesselName: sanitize(params['vessel-name']),
+    arrivalDate: sanitize(params['arrival-date']),
+    departureDate: sanitize(params['departure-date']),
+    sortBy: validSortColumns.includes(params['sort-by'] as SortColumn) ? params['sort-by'] : 'create_date',
     orderBy: params['order-by']?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC',
     limit,
     offset
   };
 }
 
-function buildQuery(params: QueryParams): { query: string, params: any[], conditions: string[] } {
+function buildQuery(params: QueryParams): { query: string, params: any[] } {
   const conditions: string[] = [];
   const queryParams: any[] = [];
   let paramIndex = 1;
@@ -186,18 +153,15 @@ function buildQuery(params: QueryParams): { query: string, params: any[], condit
     queryParams.push(params.departureDate);
   }
   
-  // Build the query
-  let query = 'SELECT * FROM projects';
-  if (conditions.length > 0) {
-    query += ' WHERE ' + conditions.join(' AND ');
-  }
+  const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
   
-  // Add sorting
-  query += ` ORDER BY ${params.sortBy} ${params.orderBy}`;
-  
-  // Add pagination
-  query += ` LIMIT ${paramIndex++} OFFSET ${paramIndex++}`;
+  const query = `
+    SELECT *, COUNT(*) OVER() as total_count 
+    FROM projects${whereClause}
+    ORDER BY ${params.sortBy} ${params.orderBy}
+    LIMIT ${paramIndex++} OFFSET ${paramIndex++}
+  `;
   queryParams.push(params.limit, params.offset);
   
-  return { query, params: queryParams, conditions };
+  return { query, params: queryParams };
 }

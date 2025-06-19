@@ -1,63 +1,93 @@
 import { executeQuery } from '/opt/nodejs/db';
-import { ApiResponse, LambdaResponse } from '/opt/nodejs/api-model';
+import { ApiResponse, LambdaResponse, ResponsePage } from '/opt/nodejs/api-model';
 
-const LIKE = "LIKE";
+type SortColumn = 'name' | 'email' | 'phone' | 'created_at';
+type SortOrder = 'ASC' | 'DESC';
+
+interface QueryParams {
+  phone?: string;
+  name?: string;
+  email?: string;
+  orderBy: SortColumn;
+  sortBy: SortOrder;
+  limit: number;
+  offset: number;
+}
 
 export const handler = async (event: any) => {
   console.log('Receive Event:', event);
-  const phone = event.queryStringParameters?.phone;
-  const name = event.queryStringParameters?.name;
-  const mail = event.queryStringParameters?.email;
-  const limit = parseInt(event.queryStringParameters?.limit ?? '', 10);
-  const offset = parseInt(event.queryStringParameters?.offset ?? '', 10);
-  const oderBy = event.queryStringParameters?.oderBy;
-  const sortBy = event.queryStringParameters?.sortBy ?? 'ASC';
-  if (isNaN(limit) || limit <= 0) {
-    return new LambdaResponse(400, new ApiResponse(false, null, "Invalid 'limit' query parameter. Must be a number greater than 0."));
-  }
-  if (isNaN(offset) || offset < 0) {
-    return new LambdaResponse(400, new ApiResponse(false, null, "Invalid 'offset' query parameter. Must be a number greater or equal 0."));
-  }
-  let selectSql = 'SELECT * FROM users';
-  let paramCount = 0;
-  let selectParams: any[] = [];
+  
   try {
-    ({ paramCount, selectSql } = setParam(phone, paramCount, selectSql, selectParams, 'phone', LIKE));
-    ({ paramCount, selectSql } = setParam(name, paramCount, selectSql, selectParams, 'name', LIKE));
-    ({ paramCount, selectSql } = setParam(mail, paramCount, selectSql, selectParams, 'email', LIKE));
-    if (oderBy) {
-      selectSql = selectSql + ' ORDER BY ' + oderBy + ' ' + sortBy;
+    const queryParams = parseQueryParameters(event.queryStringParameters || {});
+    const { query, params } = buildQuery(queryParams);
+    
+    console.log('Query:', query);
+    console.log('Params:', params);
+    
+    const result = await executeQuery(query, params);
+    
+    if (!result.success) {
+      return new LambdaResponse(400, new ApiResponse(false, null, 'Error executing query', result.error));
     }
-    if (limit > 0 && offset >= 0) {
-      selectSql = selectSql + ' LIMIT ' + limit + ' OFFSET ' + offset;
-    }
-    selectSql = selectSql + ';';
-    console.log('Select SQL:', selectSql);
-    console.log('Select Params:', selectParams);
-    const selectedUsers = await executeQuery(selectSql, selectParams);
-    console.log('Selected Users:', selectedUsers);
-    return new LambdaResponse(200, new ApiResponse(true, selectedUsers));
+
+    const total = result.data.length > 0 ? parseInt(result.data[0].total_count, 10) : 0;
+    const users = result.data.map((row: { total_count: number; [key: string]: any }) => {
+      const { total_count, ...user } = row;
+      return user;
+    });
+
+    return new LambdaResponse(200, new ResponsePage(queryParams.offset, queryParams.limit, total, users));
   } catch (error: any) {
     console.error('Error:', error);
     return new LambdaResponse(500, new ApiResponse(false, null, 'Internal server error', error.message));
   }
 };
 
-function setParam(value: any, paramCount: number, selectSql: string, selectParams: any[], paramName: string, operator: string) {
-  if (value) {
-    if (paramCount === 0) {
-      selectSql += ' WHERE';
-    } else {
-      selectSql += ' AND';
-    }
-    paramCount++;
-    if (operator === LIKE) {
-      selectSql += ` ${paramName} ILIKE $${paramCount}`;
-      selectParams.push(`%${value}%`);
-    } else {
-      selectSql += ` ${paramName} = $${paramCount}`;
-      selectParams.push(value);
-    }
+function parseQueryParameters(params: Record<string, any>): QueryParams {
+  const validSortColumns: SortColumn[] = ['name', 'email', 'phone', 'created_at'];
+  const limit = Math.min(Math.max(parseInt(params.limit, 10) || 10, 1), 100);
+  const offset = Math.max(parseInt(params.offset, 10) || 0, 0);
+  
+  return {
+    phone: params.phone?.trim() || undefined,
+    name: params.name?.trim() || undefined,
+    email: params.email?.trim() || undefined,
+    orderBy: validSortColumns.includes(params.orderBy as SortColumn) ? params.orderBy : 'created_at',
+    sortBy: params.sortBy?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC',
+    limit,
+    offset
+  };
+}
+
+function buildQuery(params: QueryParams): { query: string, params: any[] } {
+  const conditions: string[] = [];
+  const queryParams: any[] = [];
+  let paramIndex = 1;
+
+  if (params.phone) {
+    conditions.push(`phone ILIKE ${paramIndex++}`);
+    queryParams.push(`%${params.phone}%`);
   }
-  return { paramCount, selectSql };
+
+  if (params.name) {
+    conditions.push(`name ILIKE ${paramIndex++}`);
+    queryParams.push(`%${params.name}%`);
+  }
+
+  if (params.email) {
+    conditions.push(`email ILIKE ${paramIndex++}`);
+    queryParams.push(`%${params.email}%`);
+  }
+
+  const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+  
+  const query = `
+    SELECT *, COUNT(*) OVER() as total_count 
+    FROM users${whereClause}
+    ORDER BY ${params.orderBy} ${params.sortBy}
+    LIMIT ${paramIndex++} OFFSET ${paramIndex++}
+  `;
+  queryParams.push(params.limit, params.offset);
+  
+  return { query, params: queryParams };
 }
