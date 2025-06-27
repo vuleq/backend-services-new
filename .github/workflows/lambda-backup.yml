@@ -82,9 +82,9 @@ jobs:
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
-            owner: "lqvu2025",
+            owner: "KSLSolutions",
             repo: "backend-services",
-            workflow_id: "s3-cross-account-sync",
+            workflow_id: "s3-cross-account-sync.yml",
             ref: process.env.REF_NAME,
             inputs: {
               source_prefix: "dev/release1.0.0.0",
