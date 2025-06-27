@@ -1,0 +1,422 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  A serverless application with multiple Lambda functions, API Gateway, and Layers.
+  This template demonstrates best practices for managing secrets and reducing code duplication.
+
+# ------------------------------------------------------------
+# Globals: Define common properties for all functions
+# ------------------------------------------------------------
+Globals:
+  Function:
+    Runtime: nodejs22.x # Using LTS version for better stability
+    MemorySize: 128
+    Timeout: 10
+    Handler: index.handler
+    Layers:
+      - !Ref ApiModelLayer
+      - !Ref DbLayer
+      - !Ref ErrorCodeLayer
+    Environment:
+      Variables:
+        DB_HOST: !Ref DBHost
+        DB_NAME: !Ref DBName
+        DB_PASSWORD: !Ref DBPassword
+        DB_PORT: !Ref DBPort
+        DB_USER: !Ref DBUser
+
+# ------------------------------------------------------------
+# Parameters: For securely providing sensitive data
+# ------------------------------------------------------------
+Parameters:
+  DBHost:
+    Type: String
+    Description: "Database host URL"
+    Default: "wdr-dev.cluster-cf4kw8i8apdx.ap-southeast-1.rds.amazonaws.com"
+  DBName:
+    Type: String
+    Description: "Database name"
+    Default: "wdr"
+  DBUser:
+    Type: String
+    Description: "Database username"
+    Default: "postgres"
+  DBPort:
+    Type: Number
+    Description: "Database port"
+    Default: 5432
+  DBPassword:
+    Type: String
+    Description: "Database Password"
+    Default: "dl8!RHGiz0Qek![J$5u0.dvYJ_7_"
+    NoEcho: true # Masks the password in logs and console
+
+Resources:
+  # ------------------------------------------------------------
+  # API Gateway: Single entry point for all functions
+  # ------------------------------------------------------------
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: sam-app5
+      StageName: dev
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+
+  # ------------------------------------------------------------
+  # Lambda Layers: For sharing common code and dependencies
+  # ------------------------------------------------------------
+  ErrorCodeLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: error-code-layer
+      Description: Error code definitions
+      ContentUri: dist/layers/error-code/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+
+  DbLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: db-layer
+      Description: Database connection utilities
+      ContentUri: dist/layers/db/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+
+  ApiModelLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: api-model-layer
+      Description: API Model
+      ContentUri: dist/layers/api-model/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+
+  # ------------------------------------------------------------
+  # Lambda Functions: Grouped by resource (Project, Report, etc.)
+  # ------------------------------------------------------------
+
+  # --- Project Functions ---
+  ProjectGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: project-get-all-function
+      Description: Get all projects
+      CodeUri: dist/functions/project/project-get-all
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /project/all
+            Method: get
+
+  ProjectGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: project-get-by-id-function
+      Description: Get project by ID
+      CodeUri: dist/functions/project/project-get-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /project/{id}
+            Method: get
+
+  ProjectSearchByParametersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: project-search-by-parameters-function
+      Description: Search projects by parameters
+      CodeUri: dist/functions/project/project-search-by-parameters
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /project/search
+            Method: get
+
+  ProjectUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: project-update-by-id-function
+      Description: Update project by ID
+      CodeUri: dist/functions/project/project-update-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /project/{id}
+            Method: put
+
+  # --- Report Functions ---
+  ReportCreateNewTemplateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: report-create-new-template-function
+      Description: Create new report template
+      CodeUri: dist/functions/report/report_create_new_template
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /report/template
+            Method: post
+
+  ReportDeleteReportByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: report-delete-report-by-id-function
+      Description: Delete report by ID
+      CodeUri: dist/functions/report/report_delete_report_by_id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /report/{id}
+            Method: delete
+
+  ReportGetReportByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: report-get-report-by-id-function
+      Description: Get report by ID
+      CodeUri: dist/functions/report/report_get_report_by_id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /report/{id}
+            Method: get
+
+  ReportSearchReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: report-search-report-function
+      Description: Search reports
+      CodeUri: dist/functions/report/report_search_report
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /report/search
+            Method: get
+
+  ReportUpdateReportByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: report-update-report-by-id-function
+      Description: Update report by ID
+      CodeUri: dist/functions/report/report_update_report_by_id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /report/{id}
+            Method: put
+
+  # --- Trade Section Functions ---
+  TradeSectionCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: trade-section-create-function
+      Description: Create trade section
+      CodeUri: dist/functions/trade-section/trade-section-create
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /trade-section
+            Method: post
+
+  TradeSectionDeleteByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: trade-section-delete-by-id-function
+      Description: Delete trade section by ID
+      CodeUri: dist/functions/trade-section/trade-section-delete-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /trade-section/{id}
+            Method: delete
+
+  TradeSectionGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: trade-section-get-all-function
+      Description: Get all trade sections
+      CodeUri: dist/functions/trade-section/trade-section-get-all
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /trade-section/all
+            Method: get
+
+  TradeSectionGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: trade-section-get-by-id-function
+      Description: Get trade section by ID
+      CodeUri: dist/functions/trade-section/trade-section-get-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /trade-section/{id}
+            Method: get
+
+  TradeSectionSearchByParamsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: trade-section-search-by-params-function
+      Description: Search trade sections by parameters
+      CodeUri: dist/functions/trade-section/trade-section-search-by-params
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /trade-section/search
+            Method: get
+
+  TradeSectionUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: trade-section-update-by-id-function
+      Description: Update trade section by ID
+      CodeUri: dist/functions/trade-section/trade-section-update-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /trade-section/{id}
+            Method: put
+
+  # --- Job Functions ---
+  JobCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-create-function
+      Description: Create a new job
+      CodeUri: dist/functions/jobs/job-create
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job
+            Method: post
+
+  JobGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-get-all-function
+      Description: Get all job
+      CodeUri: dist/functions/jobs/job-get-all
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job
+            Method: get
+
+  JobUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-update-by-id-function
+      Description: Update job by ID
+      CodeUri: dist/functions/jobs/job-update-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job/{id}
+            Method: put
+
+  JobGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-get-by-id-function
+      Description: Get job by ID
+      CodeUri: dist/functions/jobs/job-get-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job/{id}
+            Method: get
+
+  JobSearchByParametersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: job-search-by-parameters-function
+      Description: Search jobs by parameters
+      CodeUri: dist/functions/jobs/job-search-by-parameters
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /job/search
+            Method: get
+
+  # --- User Functions ---
+  UserGetUserByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: user-get-user-by-id-function
+      Description: Get user by ID
+      CodeUri: dist/functions/user/user-get-user-by-id
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /user/{userId}
+            Method: get
+
+  UserSearchUsersByParametersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: user-search-users-by-parameters-function
+      Description: Search users by parameters
+      CodeUri: dist/functions/user/user-search-users-by-parameters
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /user/search
+            Method: get
+
+# ------------------------------------------------------------
+# Outputs: Information about the deployed resources
+# ------------------------------------------------------------
+Outputs:
+  ApiUrl:
+    Description: "API Gateway endpoint URL for Dev stage"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/dev"
