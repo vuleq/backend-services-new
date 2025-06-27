@@ -73,7 +73,24 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            console.log("Hello from github-script!");  
+            console.log("Hello from github-script!");
+
+      - name: Trigger S3 Cross-Account Sync
+        uses: actions/github-script@v6
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+            owner: "lqvu2025",
+            repo: "backend-services",
+            workflow_id: "s3-cross-account-sync.yml",
+            ref: process.env.REF_NAME,
+            inputs: {
+              source_prefix: "dev/release1.0",
+              target_prefix: "backup"
+            }
+            });
       
       # - name: Trigger S3 Cross-Account Sync
       #   uses: actions/github-script@v6
