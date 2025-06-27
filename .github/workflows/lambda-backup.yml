@@ -77,7 +77,7 @@ jobs:
               owner: 'lqvu2025', # hoặc organization nếu repo thuộc org
               repo: 'backend-services',
               workflow_id: 's3-cross-account-sync.yml',
-              ref: '${{ github.ref_name }}',
+              ref: process.env.REF_NAME,
               inputs: {
                 source_prefix: 'dev/release1.0', # hoặc giá trị động nếu cần
                 target_prefix: 'backup'
