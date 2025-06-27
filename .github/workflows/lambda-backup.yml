@@ -84,10 +84,10 @@ jobs:
             await github.rest.actions.createWorkflowDispatch({
             owner: "lqvu2025",
             repo: "backend-services",
-            workflow_id: "s3-cross-account-sync.yml",
+            workflow_id: "s3-cross-account-sync",
             ref: process.env.REF_NAME,
             inputs: {
-              source_prefix: "dev/release1.0",
+              source_prefix: "dev/release1.0.0.0",
               target_prefix: "backup"
             }
             });
