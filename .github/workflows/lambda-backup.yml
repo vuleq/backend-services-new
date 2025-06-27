@@ -79,7 +79,7 @@ jobs:
               workflow_id: 's3-cross-account-sync.yml',
               ref: process.env.REF_NAME,
               inputs: {
-                source_prefix: 'dev/release1.0', # hoặc giá trị động nếu cần
+                source_prefix: 'dev/release1.0',
                 target_prefix: 'backup'
               }
             })
