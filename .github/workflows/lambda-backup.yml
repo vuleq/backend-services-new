@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Release version (e.g. release1.0)"
+        description: "Release version"
         required: true
         default: "release1.0"
+  push:
     branches:
-      - devops
       - dev
-jobs:
+      - devops
+jobs: 
   backup:
     runs-on: ubuntu-latest
 
