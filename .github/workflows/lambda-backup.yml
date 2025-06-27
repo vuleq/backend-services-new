@@ -68,3 +68,18 @@ jobs:
 
       - name: Done
         run: echo "🎉 Backup hoàn tất!"
+      
+      - name: Trigger S3 Cross-Account Sync
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'lqvu2025', # hoặc organization nếu repo thuộc org
+              repo: 'backend-services',
+              workflow_id: 's3-cross-account-sync.yml',
+              ref: '${{ github.ref_name }}',
+              inputs: {
+                source_prefix: 'dev/release1.0', # hoặc giá trị động nếu cần
+                target_prefix: 'backup'
+              }
+            })

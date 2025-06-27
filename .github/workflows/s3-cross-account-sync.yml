@@ -1,0 +1,98 @@
+name: S3 Cross-Account Sync
+
+on:
+  workflow_call:
+    inputs:
+      source_prefix:
+        required: true
+        type: string
+      target_prefix:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      source_prefix:
+        description: "Source S3 prefix to sync (e.g., dev/release1.0/201220)"
+        required: true
+        default: "dev/release1.0"
+      target_prefix:
+        description: "Target S3 prefix in account 2"
+        required: true
+        default: "backup"
+  schedule:
+    # Chạy tự động hàng ngày lúc 2:00 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    env:
+      SOURCE_BUCKET: store-zipfiles-lambda-all
+      TARGET_BUCKET: ${{ secrets.TARGET_S3_BUCKET_TESTPROD }}
+
+    steps:
+      - name: Configure Source AWS credentials (Account 1)
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.SOURCE_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.SOURCE_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1
+          role-to-assume: ${{ secrets.SOURCE_AWS_ROLE_ARN }}
+
+      - name: Configure Target AWS credentials (Account 2)
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.TARGET_AWS_ACCESS_KEY_ID_TESTPROD}}
+          aws-secret-access-key: ${{ secrets.TARGET_AWS_SECRET_ACCESS_KEY_TESTPROD }}
+          aws-region: ap-southeast-1
+          role-to-assume: ${{ secrets.TARGET_AWS_ROLE_ARN_TESTPROD }}
+
+      - name: Sync S3 files between accounts
+        run: |
+          SOURCE_PREFIX="${{ github.event.inputs.source_prefix || 'dev/release1.0' }}"
+          TARGET_PREFIX="${{ github.event.inputs.target_prefix || 'backup' }}"
+          DATE=$(date +%d%m%Y)
+          
+          echo "🔄 Bắt đầu sync từ Account 1 sang Account 2..."
+          echo "Source: s3://${SOURCE_BUCKET}/${SOURCE_PREFIX}/"
+          echo "Target: s3://${TARGET_BUCKET}/${TARGET_PREFIX}/${DATE}/"
+          
+          # Sync tất cả files từ source sang target
+          aws s3 sync "s3://${SOURCE_BUCKET}/${SOURCE_PREFIX}/" "s3://${TARGET_BUCKET}/${TARGET_PREFIX}/${DATE}/" \
+            --exclude "*" \
+            --include "*.zip" \
+            --delete
+          
+          echo "✅ Sync hoàn tất!"
+          
+          # Liệt kê files đã sync
+          echo "📋 Files đã được sync:"
+          aws s3 ls "s3://${TARGET_BUCKET}/${TARGET_PREFIX}/${DATE}/" --recursive
+
+      - name: Cleanup old backups (giữ lại 30 ngày gần nhất)
+        run: |
+          TARGET_PREFIX="${{ github.event.inputs.target_prefix || 'backup' }}"
+          
+          echo "🧹 Dọn dẹp backups cũ (giữ lại 30 ngày)..."
+          
+          # Lấy danh sách các folder backup cũ
+          OLD_FOLDERS=$(aws s3 ls "s3://${TARGET_BUCKET}/${TARGET_PREFIX}/" | \
+            awk '{print $2}' | \
+            sort | \
+            head -n -30)
+          
+          if [ ! -z "$OLD_FOLDERS" ]; then
+            echo "🗑️ Xóa các folder cũ:"
+            echo "$OLD_FOLDERS"
+            
+            for folder in $OLD_FOLDERS; do
+              aws s3 rm "s3://${TARGET_BUCKET}/${TARGET_PREFIX}/${folder}" --recursive
+              echo "✅ Đã xóa: ${folder}"
+            done
+          else
+            echo "✅ Không có folder cũ cần xóa"
+          fi
+
+      - name: Done
+        run: echo "🎉 Cross-account sync hoàn tất!" 
