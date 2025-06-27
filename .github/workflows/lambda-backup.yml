@@ -30,10 +30,21 @@ jobs:
       - name: Install tools
         run: sudo apt-get install -y jq curl
 
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Backup all Lambda functions
         run: |
           DATE=$(date +%d%m%Y)
-          RELEASE_VERSION="${{ github.event.inputs.release_version }}"
+          
+          # Đọc version từ package.json
+          if [ -f "package.json" ]; then
+            PACKAGE_VERSION=$(node -p "require('./package.json').version")
+            RELEASE_VERSION="${{ github.event.inputs.release_version || 'release' }}$PACKAGE_VERSION"
+          else
+            RELEASE_VERSION="${{ github.event.inputs.release_version || 'release1.0' }}"
+          fi
+          
           S3_PREFIX="$ENV_NAME/$RELEASE_VERSION/$DATE"
 
           echo "🔍 Lấy danh sách Lambda functions..."
