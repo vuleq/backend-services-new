@@ -1,253 +1,253 @@
-# name: Trigger Terraform Deployment
+name: Trigger Terraform Deployment
 
-# on:
-#   workflow_dispatch:
-#     inputs:
-#       environment:
-#         description: 'Environment to deploy'
-#         required: true
-#         default: 'prod'
-#         type: choice
-#         options:
-#         - dev
-#         - staging
-#         - prod
-#       terraform_project:
-#         description: 'Terraform project to trigger'
-#         required: true
-#         default: 'vule_tma_prod_1_0_4'
-#         type: string
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+        - dev
+        - staging
+        - prod
+      terraform_project:
+        description: 'Terraform project to trigger'
+        required: true
+        default: 'vule_tma_prod_1_0_4'
+        type: string
 
-# jobs:
-#   build-and-deploy:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v4
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-#       - name: Set environment based on branch
-#         run: |
-#           BRANCH_NAME="${{ github.ref_name }}"
+      - name: Set environment based on branch
+        run: |
+          BRANCH_NAME="${{ github.ref_name }}"
           
-#           if [[ "$BRANCH_NAME" =~ ^uat- ]]; then
-#             echo "ENVIRONMENT=uat" >> $GITHUB_ENV
-#             echo "TERRAFORM_PROJECT=vule_tma_uat_1_0_4" >> $GITHUB_ENV
-#           elif [[ "$BRANCH_NAME" =~ ^qa- ]]; then
-#             echo "ENVIRONMENT=qa" >> $GITHUB_ENV
-#             echo "TERRAFORM_PROJECT=vule_tma_qa_1_0_4" >> $GITHUB_ENV
-#           elif [[ "$BRANCH_NAME" =~ ^prod- ]]; then
-#             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
-#             echo "TERRAFORM_PROJECT=vule_tma_prod_1_0_4" >> $GITHUB_ENV
-#           elif [[ "$BRANCH_NAME" == "vule/tma/tma-pipeline" ]]; then
-#             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
-#             echo "TERRAFORM_PROJECT=vule_tma_prod_1_0_4" >> $GITHUB_ENV
-#           else
-#             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
-#             echo "TERRAFORM_PROJECT=vule_tma_dev_1_0_4" >> $GITHUB_ENV
-#           fi
+          if [[ "$BRANCH_NAME" =~ ^uat- ]]; then
+            echo "ENVIRONMENT=uat" >> $GITHUB_ENV
+            echo "TERRAFORM_PROJECT=vule_tma_uat_1_0_4" >> $GITHUB_ENV
+          elif [[ "$BRANCH_NAME" =~ ^qa- ]]; then
+            echo "ENVIRONMENT=qa" >> $GITHUB_ENV
+            echo "TERRAFORM_PROJECT=vule_tma_qa_1_0_4" >> $GITHUB_ENV
+          elif [[ "$BRANCH_NAME" =~ ^prod- ]]; then
+            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+            echo "TERRAFORM_PROJECT=vule_tma_prod_1_0_4" >> $GITHUB_ENV
+          elif [[ "$BRANCH_NAME" == "vule/tma/tma-pipeline" ]]; then
+            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+            echo "TERRAFORM_PROJECT=vule_tma_prod_1_0_4" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=dev" >> $GITHUB_ENV
+            echo "TERRAFORM_PROJECT=vule_tma_dev_1_0_4" >> $GITHUB_ENV
+          fi
           
-#           echo "🌍 Branch: $BRANCH_NAME"
-#           echo "🌍 Environment: $ENVIRONMENT"
-#           echo "🏗️ Terraform Project: $TERRAFORM_PROJECT"
+          echo "🌍 Branch: $BRANCH_NAME"
+          echo "🌍 Environment: $ENVIRONMENT"
+          echo "🏗️ Terraform Project: $TERRAFORM_PROJECT"
 
-#       - name: Setup Node.js
-#         uses: actions/setup-node@v4
-#         with:
-#           node-version: '18'
-#           cache: 'npm'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
 
-#       - name: Install dependencies
-#         run: npm install
+      - name: Install dependencies
+        run: npm install
 
-#       - name: Build Lambda packages
-#         run: |
-#           echo "🔨 Building Lambda functions and layers..."
+      - name: Build Lambda packages
+        run: |
+          echo "🔨 Building Lambda functions and layers..."
           
-#           # Build all layers
-#           npm run build:layers
+          # Build all layers
+          npm run build:layers
           
-#           # Build each Lambda function (find all subdirectories with Lambda functions)
-#           for category in functions/*/; do
-#             if [ -d "$category" ]; then
-#               for func_dir in "$category"*/; do
-#                 if [ -d "$func_dir" ]; then
-#                   func_name=$(basename "$func_dir")
-#                   echo "Building function: $func_name"
+          # Build each Lambda function (find all subdirectories with Lambda functions)
+          for category in functions/*/; do
+            if [ -d "$category" ]; then
+              for func_dir in "$category"*/; do
+                if [ -d "$func_dir" ]; then
+                  func_name=$(basename "$func_dir")
+                  echo "Building function: $func_name"
                   
-#                   # Check if it's a TypeScript function
-#                   if [ -f "$func_dir/package.json" ]; then
-#                     cd "$func_dir"
-#                     npm install --production
-#                     cd - > /dev/null
-#                   fi
+                  # Check if it's a TypeScript function
+                  if [ -f "$func_dir/package.json" ]; then
+                    cd "$func_dir"
+                    npm install --production
+                    cd - > /dev/null
+                  fi
                   
-#                   # Create deployment package
-#                   cd "$func_dir"
-#                   zip -r "../../${func_name}.zip" .
-#                   cd - > /dev/null
-#                 fi
-#               done
-#             fi
-#           done
+                  # Create deployment package
+                  cd "$func_dir"
+                  zip -r "../../${func_name}.zip" .
+                  cd - > /dev/null
+                fi
+              done
+            fi
+          done
 
-#       - name: Configure AWS credentials
-#         uses: aws-actions/configure-aws-credentials@v4
-#         with:
-#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_VuLe }}
-#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_VuLe }}
-#           aws-region: ap-southeast-1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_VuLe }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_VuLe }}
+          aws-region: ap-southeast-1
 
-#       - name: Create deployment package for S3
-#         run: |
-#           echo "📦 Creating deployment package for S3..."
+      - name: Create deployment package for S3
+        run: |
+          echo "📦 Creating deployment package for S3..."
           
-#           # Get current date in DDMMYYYY format
-#           CURRENT_DATE=$(date +%d%m%Y)
-#           echo "📅 Current date: $CURRENT_DATE"
+          # Get current date in DDMMYYYY format
+          CURRENT_DATE=$(date +%d%m%Y)
+          echo "📅 Current date: $CURRENT_DATE"
           
-#           # Create deployment directory
-#           mkdir -p deployment-package
+          # Create deployment directory
+          mkdir -p deployment-package
           
-#           # Copy all Lambda functions
-#           echo "📁 Copying Lambda functions..."
-#           for category in functions/*/; do
-#             if [ -d "$category" ]; then
-#               for func_dir in "$category"*/; do
-#                 if [ -d "$func_dir" ]; then
-#                   func_name=$(basename "$func_dir")
-#                   echo "Copying function: $func_name"
-#                   cp -r "$func_dir" "deployment-package/"
-#                 fi
-#               done
-#             fi
-#           done
+          # Copy all Lambda functions
+          echo "📁 Copying Lambda functions..."
+          for category in functions/*/; do
+            if [ -d "$category" ]; then
+              for func_dir in "$category"*/; do
+                if [ -d "$func_dir" ]; then
+                  func_name=$(basename "$func_dir")
+                  echo "Copying function: $func_name"
+                  cp -r "$func_dir" "deployment-package/"
+                fi
+              done
+            fi
+          done
           
-#           # Copy all layers
-#           echo "📁 Copying Lambda layers..."
-#           cp -r layers/ deployment-package/ 2>/dev/null || echo "No layers directory found"
+          # Copy all layers
+          echo "📁 Copying Lambda layers..."
+          cp -r layers/ deployment-package/ 2>/dev/null || echo "No layers directory found"
           
-#           # Copy package.json and other config files
-#           cp package.json deployment-package/ 2>/dev/null || echo "No package.json found"
-#           cp tsconfig.json deployment-package/ 2>/dev/null || echo "No tsconfig.json found"
-#           cp template.yaml deployment-package/ 2>/dev/null || echo "No template.yaml found"
+          # Copy package.json and other config files
+          cp package.json deployment-package/ 2>/dev/null || echo "No package.json found"
+          cp tsconfig.json deployment-package/ 2>/dev/null || echo "No tsconfig.json found"
+          cp template.yaml deployment-package/ 2>/dev/null || echo "No template.yaml found"
           
-#           # Create final zip package
-#           cd deployment-package
-#           zip -r "../prod-wdr-maritimeapps-deploy-store-lambdasources.zip" .
-#           cd ..
+          # Create final zip package
+          cd deployment-package
+          zip -r "../prod-wdr-maritimeapps-deploy-store-lambdasources.zip" .
+          cd ..
           
-#           echo "✅ Created deployment package: prod-wdr-maritimeapps-deploy-store-lambdasources.zip"
+          echo "✅ Created deployment package: prod-wdr-maritimeapps-deploy-store-lambdasources.zip"
 
-#       - name: Upload deployment package to S3
-#         run: |
-#           echo "📦 Uploading deployment package to S3..."
+      - name: Upload deployment package to S3
+        run: |
+          echo "📦 Uploading deployment package to S3..."
           
-#           # Get current date in DDMMYYYY format
-#           CURRENT_DATE=$(date +%d%m%Y)
-#           S3_PATH="prod/release2.0/$CURRENT_DATE/"
+          # Get current date in DDMMYYYY format
+          CURRENT_DATE=$(date +%d%m%Y)
+          S3_PATH="prod/release2.0/$CURRENT_DATE/"
           
-#           echo "📅 Uploading to S3 path: s3://prod-wdr-maritimeapps-deploy-store-lambdasources/$S3_PATH"
+          echo "📅 Uploading to S3 path: s3://prod-wdr-maritimeapps-deploy-store-lambdasources/$S3_PATH"
           
-#           # Upload the deployment package to S3
-#           aws s3 cp prod-wdr-maritimeapps-deploy-store-lambdasources.zip \
-#             s3://prod-wdr-maritimeapps-deploy-store-lambdasources/$S3_PATH \
-#             --region ap-southeast-1
+          # Upload the deployment package to S3
+          aws s3 cp prod-wdr-maritimeapps-deploy-store-lambdasources.zip \
+            s3://prod-wdr-maritimeapps-deploy-store-lambdasources/$S3_PATH \
+            --region ap-southeast-1
           
-#           echo "✅ Successfully uploaded to S3: s3://prod-wdr-maritimeapps-deploy-store-lambdasources/$S3_PATH"
-#           echo "📋 S3 URL: https://s3.ap-southeast-1.amazonaws.com/prod-wdr-maritimeapps-deploy-store-lambdasources/$S3_PATH"
+          echo "✅ Successfully uploaded to S3: s3://prod-wdr-maritimeapps-deploy-store-lambdasources/$S3_PATH"
+          echo "📋 S3 URL: https://s3.ap-southeast-1.amazonaws.com/prod-wdr-maritimeapps-deploy-store-lambdasources/$S3_PATH"
 
-#       - name: Upload Lambda packages to S3
-#         run: |
-#           echo "📦 Uploading individual Lambda packages to S3..."
+      - name: Upload Lambda packages to S3
+        run: |
+          echo "📦 Uploading individual Lambda packages to S3..."
           
-#           # Upload each Lambda package to S3
-#           for zip_file in *.zip; do
-#             if [ -f "$zip_file" ]; then
-#               func_name="${zip_file%.zip}"
-#               echo "Uploading $func_name to S3..."
+          # Upload each Lambda package to S3
+          for zip_file in *.zip; do
+            if [ -f "$zip_file" ]; then
+              func_name="${zip_file%.zip}"
+              echo "Uploading $func_name to S3..."
               
-#               # Upload to S3 with version (matching Terraform path structure)
-#               aws s3 cp "$zip_file" s3://prod-wdr-maritimeapps-deploy-store-lambdasources/prod/release2.0/$(date +%m%d%Y)/$func_name.zip
+              # Upload to S3 with version (matching Terraform path structure)
+              aws s3 cp "$zip_file" s3://prod-wdr-maritimeapps-deploy-store-lambdasources/prod/release2.0/$(date +%m%d%Y)/$func_name.zip
               
-#               # Create deployment info
-#               echo '{
-#                 "function_name": "'$func_name'",
-#                 "version": "'${{ github.sha }}'",
-#                 "deployment_id": "'${{ github.run_id }}'",
-#                 "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
-#                 "s3_bucket": "prod-wdr-maritimeapps-deploy-store-lambdasources",
-#                 "s3_key": "prod/release2.0/'$(date +%m%d%Y)'/'$func_name'.zip",
-#                 "environment": "'${{ env.ENVIRONMENT }}'",
-#                 "terraform_project": "'${{ env.TERRAFORM_PROJECT }}'"
-#               }' > deployment-info.json
+              # Create deployment info
+              echo '{
+                "function_name": "'$func_name'",
+                "version": "'${{ github.sha }}'",
+                "deployment_id": "'${{ github.run_id }}'",
+                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
+                "s3_bucket": "prod-wdr-maritimeapps-deploy-store-lambdasources",
+                "s3_key": "prod/release2.0/'$(date +%m%d%Y)'/'$func_name'.zip",
+                "environment": "'${{ env.ENVIRONMENT }}'",
+                "terraform_project": "'${{ env.TERRAFORM_PROJECT }}'"
+              }' > deployment-info.json
               
-#               aws s3 cp deployment-info.json s3://prod-wdr-maritimeapps-deploy-store-lambdasources/deployment-info/$func_name-latest.json
-#             fi
-#           done
+              aws s3 cp deployment-info.json s3://prod-wdr-maritimeapps-deploy-store-lambdasources/deployment-info/$func_name-latest.json
+            fi
+          done
 
-#       - name: Trigger Terraform deployment
-#         run: |
-#           echo "🚀 Triggering Terraform deployment..."
+      - name: Trigger Terraform deployment
+        run: |
+          echo "🚀 Triggering Terraform deployment..."
           
-#           # Trigger Terraform deployment via GitHub API
-#           curl -X POST \
-#             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-#             -H "Accept: application/vnd.github.v3+json" \
-#             https://api.github.com/repos/${{ github.repository_owner }}/${{ env.TERRAFORM_PROJECT }}/dispatches \
-#             -d '{
-#               "event_type": "terraform-deployment",
-#               "client_payload": {
-#                 "environment": "${{ env.ENVIRONMENT }}",
-#                 "terraform_project": "${{ env.TERRAFORM_PROJECT }}",
-#                 "lambda_version": "${{ github.sha }}",
-#                 "deployment_id": "${{ github.run_id }}",
-#                 "s3_bucket": "prod-wdr-maritimeapps-deploy-store-lambdasources",
-#                 "triggered_by": "${{ github.actor }}",
-#                 "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-#               }
-#             }'
+          # Trigger Terraform deployment via GitHub API
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository_owner }}/${{ env.TERRAFORM_PROJECT }}/dispatches \
+            -d '{
+              "event_type": "terraform-deployment",
+              "client_payload": {
+                "environment": "${{ env.ENVIRONMENT }}",
+                "terraform_project": "${{ env.TERRAFORM_PROJECT }}",
+                "lambda_version": "${{ github.sha }}",
+                "deployment_id": "${{ github.run_id }}",
+                "s3_bucket": "prod-wdr-maritimeapps-deploy-store-lambdasources",
+                "triggered_by": "${{ github.actor }}",
+                "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              }
+            }'
 
-#       - name: Send notification
-#         run: |
-#           echo "📢 Sending notification..."
+      - name: Send notification
+        run: |
+          echo "📢 Sending notification..."
           
-#           # Send notification to Slack/Teams
-#           curl -X POST \
-#             -H "Content-Type: application/json" \
-#             -d '{
-#               "text": "🚀 Lambda deployment triggered for ${{ env.ENVIRONMENT }} environment",
-#               "attachments": [
-#                 {
-#                   "color": "good",
-#                   "fields": [
-#                     {
-#                       "title": "Environment",
-#                       "value": "${{ env.ENVIRONMENT }}",
-#                       "short": true
-#                     },
-#                     {
-#                       "title": "Terraform Project",
-#                       "value": "${{ env.TERRAFORM_PROJECT }}",
-#                       "short": true
-#                     },
-#                     {
-#                       "title": "Lambda Version",
-#                       "value": "${{ github.sha }}",
-#                       "short": true
-#                     },
-#                     {
-#                       "title": "Triggered By",
-#                       "value": "${{ github.actor }}",
-#                       "short": true
-#                     }
-#                   ]
-#                 }
-#               ]
-#             }' \
-#             ${{ secrets.SLACK_WEBHOOK_URL_VuLe }} || echo "Slack notification failed"
+          # Send notification to Slack/Teams
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d '{
+              "text": "🚀 Lambda deployment triggered for ${{ env.ENVIRONMENT }} environment",
+              "attachments": [
+                {
+                  "color": "good",
+                  "fields": [
+                    {
+                      "title": "Environment",
+                      "value": "${{ env.ENVIRONMENT }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Terraform Project",
+                      "value": "${{ env.TERRAFORM_PROJECT }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Lambda Version",
+                      "value": "${{ github.sha }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Triggered By",
+                      "value": "${{ github.actor }}",
+                      "short": true
+                    }
+                  ]
+                }
+              ]
+            }' \
+            ${{ secrets.SLACK_WEBHOOK_URL_VuLe }} || echo "Slack notification failed"
 
-#       - name: Cleanup
-#         run: |
-#           echo "🧹 Cleaning up..."
-#           rm -f *.zip
-#           rm -f deployment-info.json
+      - name: Cleanup
+        run: |
+          echo "🧹 Cleaning up..."
+          rm -f *.zip
+          rm -f deployment-info.json
