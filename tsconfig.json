@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2020",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "wdr-connect-db": ["layers/wdr-connect-db/src/index"],
+      "wdr-models": ["layers/wdr-models/src/index"],
+      "wdr-error-codes": ["layers/wdr-error-codes/src/index"],
+      "wdr-pdf-utils": ["layers/wdr-pdf-utils/src/index"],
+      "wdr-common-utils": ["layers/wdr-common-utils/src/index"],
+      "wdr-connect-external": ["layers/wdr-connect-external/src/index"],
+      "wdr-exceljs-layer": ["layers/wdr-exceljs-layer/src/index"]
+    }
+  },
+  "include": [
+    "functions/**/*",
+    "layers/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    ".aws-sam",
+    "layers/*/nodejs",
+    "layers/*/dist"
+  ]
+}

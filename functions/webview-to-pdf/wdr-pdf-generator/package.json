@@ -1,0 +1,29 @@
+{
+  "name": "wdr-pdf-generator",
+  "version": "1.0.0",
+  "description": "Lambda function to generate PDF from web pages",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/index.js --external:wdr-connect-db --external:wdr-models --external:wdr-error-codes --external:wdr-common-utils --external:@aws-sdk/* --external:@sparticuz/chromium",
+    "local": "npm run build && node dist/index.js",
+    "test": "npm run build && node test-local.js",
+    "deploy": "sam build && sam deploy",
+    "install-force": "npm install --legacy-peer-deps"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.150",
+    "@aws-sdk/client-cognito-identity-provider": "^3.490.0",
+    "puppeteer-core": "^22.15.0",
+    "@sparticuz/chromium": "^127.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "",
+  "license": "ISC"
+}

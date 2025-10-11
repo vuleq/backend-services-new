@@ -1,0 +1,72 @@
+{
+  "historyActionType": {
+    "0": {
+      "en": "{{date}}, {{actor}} imported Project"
+    },
+    "1": {
+      "en": "{{date}}, {{actor}} updated Project Info"
+    },
+    "2": {
+      "en": "{{date}}, {{actor}} updated Project Members"
+    },
+    "3": {
+      "en": "{{date}}, {{actor}} created Main Job <b>\"{{jobTitle}}\"</b>"
+    },
+    "4": {
+      "en": "{{date}}, {{actor}} created Supporting Job <b>\"{{jobTitle}}\"</b>"
+    },
+    "5": {
+      "en": "{{date}}, {{actor}} created AWRF Job <b>\"{{jobTitle}}\"</b>"
+    },
+    "6": {
+      "en": "{{date}}, {{actor}} re-uploaded Quotation file (Added {{totalJob}} jobs)"
+    },
+    "7": {
+      "en": "{{date}}, {{actor}} merged <b>{{jobTitles}}</b> to the new job <b>\"{{jobTitle}}\"</b>"
+    },
+    "8": {
+      "en": "{{date}}, {{actor}} changed status of <b>\"{{jobTitle}}\"</b> from <b>{{oldValue}}</b> to <b>{{newValue}}</b>"
+    },
+    "9": {
+      "en": "{{date}}, {{actor}} edited Job <b>\"{{jobTitle}}\"</b>"
+    },
+    "10": {
+      "en": "{{date}}, {{actor}} created WBS <b>\"{{code}}\"</b>"
+    },
+    "11": {
+      "en": "{{date}}, {{actor}} synchronized WBS"
+    },
+    "12": {
+      "en": "{{date}}, {{actor}} changed Project status from <b>{{oldValue}}</b> to <b>{{newValue}}</b>"
+    },
+    "13": {
+      "en": "{{date}}, {{actor}} <b>failed</b> to <b>upload the quotation file</b>"
+    },
+    "14": {
+      "en": "{{date}}, {{actor}} <b>failed</b> to <b>synchronize WBS</b>"
+    }
+  },
+  "historyActionChildType": {
+    "0": {
+      "en": "{{field}}: {{value}}"
+    },
+    "1": {
+      "en": "<b>{{field}}</b> changed from <b>“{{oldValue}}”</b> to <b>“{{newValue}}”</b>"
+    },
+    "2": {
+      "en": "Removed <b>“{{userName}}”</b> from <b>{{roleName}}</b>"
+    },
+    "3": {
+      "en": "Assigned <b>“{{userName}}”</b> as <b>{{roleName}}</b>"
+    },
+    "4": {
+      "en": "Added job: <b>\"{{jobTitle}}\"</b>"
+    },
+    "5": {
+      "en": "Added: <b>{{codes}}</b>"
+    },
+    "6": {
+      "en": "Updated: <b>{{codes}}</b>"
+    }
+  }
+}

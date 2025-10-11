@@ -1,0 +1,19 @@
+{
+  "name": "wdr-global-settings-project-schedule-update",
+  "version": "1.0.0",
+  "description": "Update EventBridge schedule expressions for project sync time",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/index.js --external:wdr-connect-db --external:wdr-models --external:wdr-error-codes",
+    "local": "npm run build && node dist/index.js"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.150",
+    "@aws-sdk/client-scheduler": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.12",
+    "esbuild": "^0.25.6",
+    "typescript": "^5.8.3"
+  }
+}

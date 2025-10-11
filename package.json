@@ -1,0 +1,63 @@
+{
+  "name": "wdr-newsource",
+  "version": "1.0.0",
+  "description": "WDR Serverless Application with optimized layers",
+  "scripts": {
+    "build": "npm run build:layers && npm run build:functions",
+    "build:layers": "npm run build:layer:db && npm run build:layer:models && npm run build:layer:errors && npm run build:layer:pdf-utils && npm run build:layer:common-utils && npm run build:layer:external && npm run build:layer:exceljs",
+    "build:layer:db": "cd layers/wdr-connect-db && npm install && npm run build",
+    "build:layer:models": "cd layers/wdr-models && npm install && npm run build",
+    "build:layer:errors": "cd layers/wdr-error-codes && npm install && npm run build",
+    "build:layer:pdf-utils": "cd layers/wdr-pdf-utils && npm install && npm run build",
+    "build:layer:common-utils": "cd layers/wdr-common-utils && npm install && npm run build",
+    "build:layer:exceljs": "cd layers/wdr-exceljs-layer && npm install && npm run build",
+    "build:layer:external": "cd layers/wdr-connect-external && npm install && npm run build",
+    "build:functions": "echo Functions will be built by SAM",
+    "predeploy": "npm install && npm run build:layers",
+    "deploy": "sam build && npm run copy-layers && sam deploy",
+    "deploy:guided": "sam build && npm run copy-layers && sam deploy --guided",
+    "copy-layers": "npm run copy-layer:db && npm run copy-layer:models && npm run copy-layer:errors && npm run copy-layer:common-utils && npm run copy-layer:external && npm run copy-layer:exceljs",
+    "copy-layer:db": "cpy layers/wdr-connect-db/nodejs/node_modules/wdr-connect-db/** .aws-sam/build/WdrConnectDbLayer/nodejs/node_modules/wdr-connect-db/ --parents",
+    "copy-layer:models": "cpy layers/wdr-models/nodejs/node_modules/wdr-models/** .aws-sam/build/WdrModelsLayer/nodejs/node_modules/wdr-models/ --parents",
+    "copy-layer:errors": "cpy layers/wdr-error-codes/nodejs/node_modules/wdr-error-codes/** .aws-sam/build/WdrErrorCodesLayer/nodejs/node_modules/wdr-error-codes/ --parents",
+    "copy-layer:common-utils": "cpy layers/wdr-common-utils/nodejs/node_modules/wdr-common-utils/** .aws-sam/build/WdrCommonUtilsLayer/nodejs/node_modules/wdr-common-utils/ --parents",
+    "copy-layer:exceljs": "cpy layers/wdr-exceljs-layer/nodejs/node_modules/wdr-exceljs-layer/** .aws-sam/build/WdrExcelJsLayer/nodejs/node_modules/wdr-exceljs-layer/ --parents",
+    "copy-layer:external": "cpy layers/wdr-connect-external/nodejs/node_modules/wdr-connect-external/** .aws-sam/build/WdrConnectExternalLayer/nodejs/node_modules/wdr-connect-external/ --parents",
+    "local": "sam local start-api",
+    "clean": "npm run clean:layers && npm run clean:build",
+    "clean:layers": "cd layers/wdr-connect-db && npm run clean && cd ../wdr-models && npm run clean && cd ../wdr-error-codes && npm run clean && cd ../wdr-common-utils && npm run clean && cd ../wdr-connect-external && npm run clean && cd ../wdr-exceljs-layer && npm run clean",
+    "clean:build": "rimraf .aws-sam",
+    "copy-layer-linux:db": "cp -r layers/wdr-connect-db/nodejs/node_modules/wdr-connect-db/. .aws-sam/build/WdrConnectDbLayer/nodejs/node_modules/wdr-connect-db/",
+    "copy-layer-linux:models": "cp -r layers/wdr-models/nodejs/node_modules/wdr-models/. .aws-sam/build/WdrModelsLayer/nodejs/node_modules/wdr-models/",
+    "copy-layer-linux:errors": "cp -r layers/wdr-error-codes/nodejs/node_modules/wdr-error-codes/. .aws-sam/build/WdrErrorCodesLayer/nodejs/node_modules/wdr-error-codes/",
+    "copy-layer-linux:common-utils": "cp -r layers/wdr-common-utils/nodejs/node_modules/wdr-common-utils/. .aws-sam/build/WdrCommonUtilsLayer/nodejs/node_modules/wdr-common-utils/",
+    "copy-layer-linux:exceljs": "cp -r layers/wdr-exceljs-layer/nodejs/node_modules/wdr-exceljs-layer/. .aws-sam/build/WdrExcelJsLayer/nodejs/node_modules/wdr-exceljs-layer/",
+    "copy-layer-linux:external": "cp -r layers/wdr-connect-external/nodejs/node_modules/wdr-connect-external/. .aws-sam/build/WdrConnectExternalLayer/nodejs/node_modules/wdr-connect-external/",
+    "copy-layers-linux": "npm run copy-layer-linux:db && npm run copy-layer-linux:models && npm run copy-layer-linux:errors && npm run copy-layer-linux:common-utils && npm run copy-layer-linux:external && npm run copy-layer-linux:exceljs"
+  },
+  "keywords": [
+    "aws",
+    "serverless",
+    "lambda",
+    "sam"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "cpy-cli": "^5.0.0",
+    "esbuild": "^0.25.6",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.490.0",
+    "@aws-sdk/client-s3": "^3.850.0",
+    "@types/aws-lambda": "^8.10.152",
+    "aws-lambda": "^1.0.7",
+    "exceljs": "^4.4.0",
+    "pdf-lib": "^1.17.1",
+    "puppeteer-core": "^22.15.0",
+    "@sparticuz/chromium": "^127.0.0",
+    "xml2js": "^0.6.2"
+  }
+}

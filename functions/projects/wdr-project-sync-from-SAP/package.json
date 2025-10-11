@@ -1,0 +1,19 @@
+{
+  "name": "wdr-project-sync-from-sap",
+  "version": "1.0.0",
+  "description": "Lambda function to sync open project",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/index.js --external:wdr-connect-db --external:wdr-models --external:wdr-common-utils --external:wdr-connect-external",
+    "local": "npm run build && node dist/index.js"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.150",
+    "@aws-sdk/client-lambda": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.6",
+    "esbuild": "^0.25.6",
+    "typescript": "^5.8.3"
+  }
+}

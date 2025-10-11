@@ -1,0 +1,36 @@
+{
+  "name": "wdr-pdf-utils",
+  "version": "1.0.0",
+  "description": "WDR PDF Generation Utilities Layer - Provides XML to PDF conversion services for Lambda functions",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "npm run clean && npm run compile && npm run create-package",
+    "clean": "rimraf nodejs",
+    "compile": "tsc",
+    "create-package": "node -e \"const fs = require('fs'); const path = require('path'); const dir = 'nodejs/node_modules/wdr-pdf-utils'; fs.mkdirSync(dir, {recursive: true}); fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name: 'wdr-pdf-utils', version: '1.0.0', main: 'index.js', type: 'commonjs'}, null, 2))\"",
+    "predeploy": "npm run build"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.12",
+    "@types/xml2js": "^0.4.14",
+    "typescript": "^5.8.3",
+    "rimraf": "^4.4.0"
+  },
+  "keywords": [
+    "AWS",
+    "Lambda",
+    "Layer",
+    "PDF",
+    "XML",
+    "utilities"
+  ],
+  "author": "KSL Solutions",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "wdr-project-add-quotation",
+  "version": "1.0.0",
+  "description": "Import jobs from quotaion file",
+  "main": "index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/index.js --external:wdr-connect-db --external:wdr-common-utils --external:wdr-exceljs-layer",
+    "local": "npm run build && node dist/index.js"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.150",
+    "@aws-sdk/client-s3": "^3.850.0"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.0.12",
+    "esbuild": "^0.25.6",
+    "typescript": "^5.8.3"
+  }
+}

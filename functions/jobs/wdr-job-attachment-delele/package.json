@@ -1,0 +1,19 @@
+{
+  "name": "wdr-job-attachment-delele",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/index.js --external:wdr-connect-db --external:wdr-models --external:wdr-error-codes --external:wdr-common-utils",
+    "local": "npm run build && node dist/index.js"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.150",
+    "@aws-sdk/client-lambda": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.12",
+    "esbuild": "^0.25.6",
+    "typescript": "^5.8.3"
+  }
+}

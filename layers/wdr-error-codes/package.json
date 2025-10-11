@@ -1,0 +1,23 @@
+{
+  "name": "wdr-error-codes",
+  "version": "1.0.0",
+  "description": "WDR Error codes layer",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "npm run clean && npm run compile && npm run create-package",
+    "clean": "rimraf nodejs",
+    "compile": "tsc",
+    "create-package": "node -e \"const fs = require('fs'); const path = require('path'); const dir = 'nodejs/node_modules/wdr-error-codes'; fs.mkdirSync(dir, {recursive: true}); fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name: 'wdr-error-codes', version: '1.0.0', main: 'index.js', type: 'commonjs'}, null, 2))\"",
+    "predeploy": "npm run build"
+  },
+  "keywords": ["aws", "lambda", "layer", "errors"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.150",
+    "@types/node": "^24.0.12",
+    "esbuild": "^0.25.6",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3"
+  }
+}

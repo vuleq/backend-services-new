@@ -1,0 +1,18 @@
+{
+  "name": "wdr-report-get-by-id",
+  "version": "1.0.0",
+  "description": "Lambda function to get report by ID",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/index.js --external:wdr-connect-db --external:wdr-models --external:wdr-error-codes",
+    "local": "npm run build && node dist/index.js"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.150"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.6",
+    "esbuild": "^0.25.6",
+    "typescript": "^5.8.3"
+  }
+}

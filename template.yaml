@@ -1,0 +1,2985 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  WDR Serverless Application with Lambda functions and Layers.
+  This template manages the WDR microservices architecture.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    MemorySize: 128
+    Timeout: 60
+    Handler: index.handler
+    Environment:
+      Variables:
+        DB_HOST: !Ref DBHost
+        DB_NAME: !Ref DBName
+        DB_PASSWORD: !Ref DBPassword
+        DB_PORT: !Ref DBPort
+        DB_USER: !Ref DBUser
+        DB_IAM_USER: !Ref DBIamUser
+        DB_SSL: !Ref DBSSL
+        DB_SECRET_ARN: !Ref DBSecretArn
+        JWT_SECRET: !Ref JWTSecret
+    Tags:
+      Owner: vendor
+      Environment: dev
+      Application: wdr
+    VpcConfig:
+      SecurityGroupIds: !Ref SecurityGroupIds
+      SubnetIds: !Ref SubnetIds
+
+Parameters:
+  ParametersAndSecretsExtension:
+    Type: String
+    Description: "ARN of the AWS-Parameters-and-Secrets-Lambda-Extension"
+    Default: "arn:aws:lambda:ap-southeast-1:044395824272:layer:AWS-Parameters-and-Secrets-Lambda-Extension:19"
+  SAPLink:
+    Type: String
+    Description: "Link to SAP system for WDR project sync"
+    Default: "https://devhec.kuokgroup.com.sg/RESTAdapter/WDR/"
+  SAPProjectEndPoint:
+    Type: String
+    Description: "Endpoint for SAP project data"
+    Default: "GetProject"
+  SAPWBSEndPoint:
+    Type: String
+    Description: "Endpoint for SAP WBS data"
+    Default: "GetWbs"
+  SAPCreateWBSEndPoint:
+    Type: String
+    Description: "Endpoint for SAP Create WBS data"
+    Default: "CreateWbs"
+  SAPCreateWBSActivityEndPoint:
+    Type: String
+    Description: "Endpoint for SAP Create WBS activity data"
+    Default: "CreateActivity"
+  CreateReportFunctionName:
+    Type: String
+    Description: "Name of the Create Report Lambda Function"
+    Default: "wdr-report-create-new-report-dev"
+  CreateFolderFunctionName:
+    Type: String
+    Description: "Name of the Create Folder Lambda Function"
+    Default: "wdr-bucket-create-folder"
+  DeleteFolderFunctionName:
+    Type: String
+    Description: "Name of the Create Folder Lambda Function"
+    Default: "wdr-bucket-delete-folder"
+  DBHost:
+    Type: String
+    Description: "Database host URL"
+    Default: "wdr-dev.cluster-cf4kw8i8apdx.ap-southeast-1.rds.amazonaws.com"
+  DBName:
+    Type: String
+    Description: "Database name"
+    Default: "wdr"
+  DBUser:
+    Type: String
+    Description: "Database username for password authentication"
+    Default: "postgres"
+  DBIamUser:
+    Type: String
+    Description: "Database username for IAM authentication (must have rds_iam role)"
+    Default: "iam_wdr_user"
+  DBPort:
+    Type: Number
+    Description: "Database port"
+    Default: 5432
+  DBPassword:
+    Type: String
+    Description: "Database Password (Consider using AWS Secrets Manager)"
+    NoEcho: true
+    Default: ""
+  DBSSL:
+    Type: String
+    Description: "Database SSL enabled"
+    Default: "false"
+  DBSecretArn:
+    Type: String
+    Description: "ARN of the AWS Secrets Manager secret containing database credentials (optional)"
+    Default: ""
+  CognitoUserPoolId:
+    Type: String
+    Description: "Cognito User Pool ID for user creation"
+    Default: ""
+  JWTSecret:
+    Type: String
+    Description: "JWT Secret for token generation and verification"
+    NoEcho: true
+    Default: "wdr-default-secret-key"
+  SecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: "List of Security Group IDs for Lambda VPC config"
+    Default: "sg-0784ada3372d7f704"
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: "List of Subnet IDs for Lambda VPC config"
+    Default: "subnet-09196e984b9adaeba,subnet-0790225e217242d90,subnet-088c30a083372f428,subnet-030bf65294982e2a2"
+  S3BucketName:
+    Type: String
+    Description: "S3 bucket name for WDR app"
+    Default: "ksl-wdr-s3-dev"
+  ResourceNamePrefix:
+    Type: String
+    Description: "Prefix for all resources created by this stack"
+    Default: "wdr-"
+  WdrChromeAwsLambdaLayer:
+    Type: String
+    Description: "ARN of the Chrome AWS Lambda Layer"
+    Default: "arn:aws:lambda:ap-southeast-1:764866452798:layer:chrome-aws-lambda:50"
+  SecretsManagerSecretArn:
+    Type: String
+    Description: "ARN of the Secrets Manager secret for database credentials"
+    Default: "arn:aws:secretsmanager:ap-southeast-1:797233058645:secret:prod-wdr-maritimeapps-db-credentials-R305Nf"
+  SAPSecretsManagerSecretArn:
+    Type: String
+    Description: "ARN of the Secrets Manager secret for SAP credentials"
+    Default: "arn:aws:secretsmanager:ap-southeast-1:797233058645:secret:SAPCredentia-dAVK1r"
+  FileNameTemplate:
+    Type: String
+    Description: "Excel file used to make export worklist template"
+    Default: "masterdata/template_worklist.xlsx"
+  JobSearchFunctionName:
+    Type: String
+    Description: "Function to get job data by filter"
+    Default: "job-search-by-params"
+  DefaultPwd:
+    Type: String
+    Description: "Default password for create new user"
+    NoEcho: true
+    Default: ""
+  SharpLayerArn:
+    Type: String
+    Default: arn:aws:lambda:ap-southeast-1:797233058645:layer:sharp-lib:1
+    Description: ARN of the Sharp library layer  
+  # WDRLambdaRole:
+  #   Type: String
+  #   Description: "IAM role for Lambda functions"
+  #   Default: "arn:aws:iam::797233058645:role/dev-wdr-lambda-function-role"
+
+Resources:
+  # IAM Roles , uncomment if the role is not existing
+  WdrLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ResourceNamePrefix}lambda-function-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - lambda.amazonaws.com
+                - scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CognitoUserPoolAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:DescribeUserPool
+                  - cognito-idp:AdminEnableUser
+                  - cognito-idp:AdminDisableUser
+                  - cognito-idp:AdminSetUserPassword
+                Resource: !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
+        - PolicyName: LambdaLoggingPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+        - PolicyName: LambdaVPCAccessExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AWSLambdaVPCAccessExecutionPermissions
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeSubnets
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: "*"
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:DeleteObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketName}/originals/*"
+                  - !Sub "arn:aws:s3:::${S3BucketName}/compress/*"
+                  - !Sub "arn:aws:s3:::${S3BucketName}/results/*"
+                  - !Sub "arn:aws:s3:::${S3BucketName}/masterdata/*"
+                  - !Sub "arn:aws:s3:::${S3BucketName}"
+        - PolicyName: SecretsManagerAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: 
+                  - !Ref SecretsManagerSecretArn
+                  - !Ref SAPSecretsManagerSecretArn
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: "*"
+        - PolicyName: RDSAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds-db:connect
+                Resource: "*"
+        - PolicyName: EventBridgeSchedulerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - scheduler:UpdateSchedule
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ResourceNamePrefix}lambda-function-role"
+
+  # Lambda Layers
+  WdrErrorCodesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${ResourceNamePrefix}error-codes-layer"
+      Description: WDR Error code definitions
+      ContentUri: layers/wdr-error-codes/nodejs/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: nodejs22.x
+
+  WdrConnectDbLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${ResourceNamePrefix}connect-db-layer"
+      Description: WDR Database connection utilities
+      ContentUri: layers/wdr-connect-db/nodejs/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: nodejs22.x
+
+  WdrModelsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${ResourceNamePrefix}models-layer"
+      Description: WDR API Models
+      ContentUri: layers/wdr-models/nodejs/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: nodejs22.x
+
+  WdrPdfUtilsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${ResourceNamePrefix}pdf-utils-layer"
+      Description: WDR PDF generation and XML parsing utilities
+      ContentUri: layers/wdr-pdf-utils/nodejs/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: nodejs22.x
+
+  WdrCommonUtilsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${ResourceNamePrefix}common-utils-layer"
+      Description: WDR Common utilities with UUID and JWT token functions
+      ContentUri: layers/wdr-common-utils/nodejs/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: nodejs22.x
+
+  WdrConnectExternalLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${ResourceNamePrefix}connect-external-layer"
+      Description: WDR External API connection utilities for SAP and other services
+      ContentUri: layers/wdr-connect-external/nodejs/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: nodejs22.x
+
+  WdrExcelJsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${ResourceNamePrefix}exceljs-layer"
+      Description: ExcelJS library for Excel file operations
+      ContentUri: layers/wdr-exceljs-layer/nodejs/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: nodejs22.x
+
+  # Lambda Functions
+
+  # --- User Functions ---
+  # wdr user find by role function
+  WdrUserFindByRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}user-find-by-role"
+      Description: Find users by role
+      CodeUri: functions/users/wdr-user-find-by-role/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr create users
+  WdrCreateUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}create-users-dev"
+      Description: Function to create users in Cognito and database
+      CodeUri: functions/users/wdr-create-users/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          DEFAULT_PASSWORD: !Ref DefaultPwd
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+          - "@aws-sdk/client-cognito-identity-provider"
+
+  # wdr update users
+  WdrUpdateUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-update-users-dev
+      Description: Function to update user in Cognito and database
+      CodeUri: functions/users/wdr-update-users/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+          - "@aws-sdk/client-cognito-identity-provider"
+
+    #  wdr user search function
+  WdrUserSearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}user-search"
+      Description: Search users
+      CodeUri: functions/users/wdr-user-search-user/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  # wdr toggle user status
+  WdrToggleUserStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-toggle-user-status-dev
+      Description: Toggle user status in Cognito and database
+      CodeUri: functions/users/wdr-toggle-user-status/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-common-utils"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-cognito-identity-provider"
+
+  # wdr-users-get-all
+  WdrUsersGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}users-get-all-dev"
+      Description: Function to get all users by filter
+      CodeUri: functions/users/wdr-users-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr-user-get-by-id
+  WdrUsersGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}user-get-by-id-dev"
+      Description: Function to get user by id
+      CodeUri: functions/users/wdr-user-get-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr-user-get-my-role
+  WdrUsersGetMyRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}user-get-my-role-dev"
+      Description: Function to get role and permission by user id from token
+      CodeUri: functions/users/wdr-user-get-my-role/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  WdrUserLoginLogFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}user-login-log"
+      Description: Trigger log user login to DB
+      CodeUri: functions/users/wdr-user-login-log/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrConnectDbLayer
+    
+  WdrUserLoginLogGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}user-login-log-get-all"
+      Description: Get all log user login 
+      CodeUri: functions/users/wdr-user-login-log-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  # --- Report Functions ---
+  WdrReportGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-get-by-id"
+      Description: Get report by ID
+      CodeUri: functions/reports/wdr-report-get-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+    
+  # wdr-content-xml-to-pdf function
+  WdrContentXmlToPdfFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}content-xml-to-pdf"
+      Description: Convert XML content to PDF
+      CodeUri: functions/reports/wdr-content-xml-to-pdf/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrPdfUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-pdf-utils"
+
+  # wdr-report-lock-by-id function
+  WdrReportLockByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-lock-report-by-id"
+      Description: Lock report by ID
+      CodeUri: functions/reports/wdr-report-lock-by-id/
+      Handler: wdr-report-lock-by-id.handler
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+
+  WdrReportUnlockByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-unlock-report-by-id"
+      Description: Unlock report by ID
+      CodeUri: functions/reports/wdr-report-unlock-by-id/
+      Handler: wdr-report-unlock-by-id.handler
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+
+  WdrReportRefreshLockByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-refresh-lock-report-by-id"
+      Description: Refresh report lock by ID
+      CodeUri: functions/reports/wdr-report-refresh-lock-by-id/
+      Handler: wdr-report-refresh-lock-by-id.handler
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+
+  WdrReportUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-update"
+      Description: Update report by ID
+      CodeUri: functions/reports/wdr-report-update-report/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  WdrReportDeleteByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-delete-by-id"
+      Description: Delete report by ID
+      CodeUri: functions/reports/wdr-report-delete-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+
+  WdrReportCreateNewReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-create-new-report"
+      Description: Create new report
+      CodeUri: functions/reports/wdr-report-create-new-report/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+
+  # wdr-report-count-report
+  WdrReportCountReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-count-report"
+      Description: Count reports
+      CodeUri: functions/reports/wdr-report-count-report/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  # wdr-count-report-by-range-date
+  WdrCountReportByRangeDateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}count-report-by-range-date"
+      Description: Count reports by range date
+      CodeUri: functions/reports/wdr-count-report-by-range-date/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+  
+  # wdr-report-create-report-template
+  WdrReportCreateReportTemplateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-create-report-template"
+      Description: Create report template
+      CodeUri: functions/reports/wdr-report-create-report-template/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+  
+  # wdr-report-search-report
+  WdrReportSearchReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-search-report"
+      Description: Search reports
+      CodeUri: functions/reports/wdr-report-search-report/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  WdrReportSearchPaging:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}report-search-paging"
+      Description: Search reports with pagination
+      CodeUri: functions/reports/wdr-report-search-paging/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  # --- Dynamic Values Functions ---
+  # wdr dynamic values search function
+  WdrDynamicValuesSearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}dynamic-values-search"
+      Description: Search dynamic values
+      CodeUri: functions/dynamic-values/wdr-dynamic-values-search/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr dynamic values create function
+  WdrDynamicValuesCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}dynamic-values-create"
+      Description: Create dynamic value
+      CodeUri: functions/dynamic-values/wdr-dynamic-values-create/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr dynamic values get by id
+  WdrDynamicValuesGetById:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}dynamic-values-get-by-id"
+      Description: Get dynamic value by id
+      CodeUri: functions/dynamic-values/wdr-dynamic-values-get-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr dynamic values get values function
+  WdrDynamicValuesGetValuesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}dynamic-values-get-values"
+      Description: Get values dynamic values
+      CodeUri: functions/dynamic-values/wdr-dynamic-values-get-values/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # --- Global Settings Function ---
+  # Get all global settings by group
+  WdrGlobalSettingsGetAllByGroupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}global-settings-get-all-by-group"
+      Description: Get all global settings by group
+      CodeUri: functions/global-settings/wdr-global-settings-get-all-by-group/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # Get all global settings
+  WdrGlobalSettingsGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}global-settings-get-all"
+      Description: Get all global settings
+      CodeUri: functions/global-settings/wdr-global-settings-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  # Update global settings by id
+  WdrGlobalSettingsUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}global-settings-update-by-id"
+      Description: Update global settings by id
+      CodeUri: functions/global-settings/wdr-global-settings-update-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  # --- Role Functions ---
+  # wdr-role-search
+  WdrRoleSearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}role-search"
+      Description: Search roles
+      CodeUri: functions/roles/wdr-role-search/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+  
+  # wdr-role-asign-user
+  WdrRoleAssignUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-role-assign-user-dev
+      Description: Assign user to role
+      CodeUri: functions/roles/wdr-role-assign-user/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # wdr-role-create
+  WdrRoleCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-role-create-dev
+      Description: Create role
+      CodeUri: functions/roles/wdr-role-create/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # wdr-role-delete
+  WdrRoleDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-role-delete-dev
+      Description: Delete roles
+      CodeUri: functions/roles/wdr-role-delete/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # wdr-role-get-all
+  WdrRoleGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-role-get-all-dev
+      Description: Get all role and check role can delete from user 
+      CodeUri: functions/roles/wdr-role-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr-role-get-by-id
+  WdrRoleGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-role-get-by-id-dev
+      Description: Get role detail byt id
+      CodeUri: functions/roles/wdr-role-get-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr-role-update
+  WdrRoleUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-role-update-dev
+      Description: Update role information and permissions of the role
+      CodeUri: functions/roles/wdr-role-update/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+  
+  # --- Permission Functions ---
+  # wdr-permission-get-all
+  WdrPermissionGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-permission-get-all-dev
+      Description: Get all permission filter by group_code
+      CodeUri: functions/permissions/wdr-permission-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+  
+  # --- Trade Functions ---
+  # trade-section-get-all
+  WdrTradeSectionGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}trade-section-get-all"
+      Description: Get all trade sections
+      CodeUri: functions/trade-sections/trade-section-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # trade-section-get-by-id
+  WdrTradeSectionGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}trade-section-get-by-id"
+      Description: Get trade section by ID
+      CodeUri: functions/trade-sections/trade-section-get-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # trade-section-delete-by-id
+  WdrTradeSectionDeleteByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}trade-section-delete-by-id"
+      Description: Delete trade section by ID
+      CodeUri: functions/trade-sections/trade-section-delete-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # wdr-trade-section-get-assign-user
+  WdrTradeSectionGetAssignUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}trade-section-get-assign-user"
+      Description: Get assigned user in trade section filter by role code
+      CodeUri: functions/trade-sections/wdr-trade-section-get-assign-user/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr-trade-section-create
+  WdrTradeSectionCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}trade-section-create"
+      Description: Create trade section and work category
+      CodeUri: functions/trade-sections/wdr-trade-section-create/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # wdr-trade-section-update-by-id
+  WdrTradeSectionUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}trade-section-update-by-id"
+      Description: Update trade section and work category
+      CodeUri: functions/trade-sections/wdr-trade-section-update-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # wdr-trade-section-search-by-params
+  WdrTradeSectionSearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}trade-section-search-by-params"
+      Description: Search trade section by input parameters
+      CodeUri: functions/trade-sections/wdr-trade-section-search-by-params/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # --- Project Functions ---
+  # wdr-project-add-quotation
+  WdrProjectAddQuotationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-add-quotation"
+      Description: Import jobs from quotation file
+      CodeUri: functions/projects/wdr-project-add-quotation/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref S3BucketName
+      Layers:
+        - !Ref WdrCommonUtilsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrExcelJsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-common-utils"
+          - "wdr-exceljs-layer"
+          
+  # project-get-all
+  WdrProjectGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-get-all"
+      Description: Get all projects
+      CodeUri: functions/projects/project-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # project-get-by-id
+  WdrProjectGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-get-by-id"
+      Description: Get project by project id
+      CodeUri: functions/projects/project-get-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # project-get-history
+  WdrProjectGetHistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-get-history"
+      Description: Get project history
+      CodeUri: functions/projects/project-get-history/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # project-get-all-srm-user
+  WdrProjectGetAllSrmUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-get-all-srm-user"
+      Description: Get all SRM users of a project
+      CodeUri: functions/projects/project-get-all-srm-user/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # project-get-all-status
+  WdrProjectGetAllStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-get-all-status"
+      Description: Get all status of project
+      CodeUri: functions/projects/project-get-all-status/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # wdr-project-get-assign-user-by-trade-section
+  WdrProjectGetAssignUserByTradeSectionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-get-assign-user-by-trade-section"
+      Description: Get assign user by trade section
+      CodeUri: functions/projects/wdr-project-get-assign-user-by-trade-section/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr-project-update-by-id
+  WdrProjectUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-update-by-id"
+      Description: Update project by project id
+      CodeUri: functions/projects/wdr-project-update-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # wdr-project-get-all
+  WdrProjectGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-get-all"
+      Description: Get all project with filter
+      CodeUri: functions/projects/wdr-project-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+
+  # wdr-project-update-by-id
+  WdrProjectAssignUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-assign-user"
+      Description: Assign user to project
+      CodeUri: functions/projects/wdr-project-assign-user/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # wdr-project-update-feedback
+  WdrProjectUpdateFeedbackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-update-feedback"
+      Description: Update project feedback
+      CodeUri: functions/projects/wdr-project-update-feedback/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # wdr-project-create
+  WdrProjectCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-project-create
+      Description: Create projects
+      CodeUri: functions/projects/wdr-project-create/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref S3BucketName
+          SAP_SECRET_NAME: !Ref SAPSecretsManagerSecretArn
+          SAP_LINK: !Ref SAPLink
+          SAP_WBS: !Ref SAPWBSEndPoint
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+        - !Ref WdrConnectExternalLayer
+        - !Ref ParametersAndSecretsExtension
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-common-utils"
+          - "wdr-connect-external"
+
+  # wdr-project-sync-from-SAP
+  WdrProjectSyncFromSAPFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-sync-from-SAP"
+      Description: Sync projects from SAP system
+      CodeUri: functions/projects/wdr-project-sync-from-SAP/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          SAP_LINK: !Ref SAPLink
+          SAP_PROJECT: !Ref SAPProjectEndPoint
+          SAP_WBS: !Ref SAPWBSEndPoint
+          SAP_SECRET_NAME: !Ref SAPSecretsManagerSecretArn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+        - !Ref WdrConnectExternalLayer
+        - !Ref ParametersAndSecretsExtension
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-common-utils"
+          - "wdr-connect-external"
+
+  # wdr-project-search-by-parameters
+  WdrProjectSearchByParametersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-search-by-parameters"
+      Description: Search project by parameters
+      CodeUri: functions/projects/wdr-project-search-by-parameters/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-common-utils"
+
+
+  # wdr-project-get-dashboard-data
+  WdrProjectGetDashBoardDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-get-dashboard-data"
+      Description: Get assign user by trade section
+      CodeUri: functions/projects/project-get-dashboard-data/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr-project-daily-fetch
+  WdrProjectDailyFetchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}project-daily-fetch"
+      Description: Daily fetch of projects from SAP
+      CodeUri: functions/projects/wdr-project-daily-fetch/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          SAP_LINK: !Ref SAPLink
+          SAP_PROJECT: !Ref SAPProjectEndPoint
+          SAP_SECRET_NAME: !Ref SAPSecretsManagerSecretArn
+      Layers:
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrConnectExternalLayer
+        - !Ref ParametersAndSecretsExtension
+      Events:
+        DailySchedule:
+          Type: ScheduleV2
+          Properties:
+            Name: !Sub "${ResourceNamePrefix}project-daily-fetch-schedule"
+            ScheduleExpression: "cron(0 10 * * ? *)"
+            ScheduleExpressionTimezone: "Asia/Singapore"
+            Description: "Run daily project fetch at 6 AM Singapore time"
+            State: ENABLED
+            RoleArn: !GetAtt WdrLambdaRole.Arn
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-connect-external"
+
+  # wdr-global-settings-project-schedule-update
+  WdrGlobalSettingsProjectScheduleUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}global-settings-project-schedule-update"
+      Description: Update global settings for project schedule
+      CodeUri: functions/global-settings/wdr-global-settings-project-schedule-update/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          SCHEDULE_NAME: !Sub "${ResourceNamePrefix}project-daily-fetch-schedule"
+          TARGET_FUNCTION_ARN: !GetAtt WdrProjectDailyFetchFunction.Arn
+          SCHEDULE_ROLE_ARN: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # --- Job Functions ---
+  # job-get-all-status
+  WdrJobGetAllStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-get-all-status"
+      Description: Get all job statuses
+      CodeUri: functions/jobs/job-get-all-status/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+
+  # job-search-by-params
+  WdrJobSearchByParamsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-search-by-params"
+      Description: Search jobs by parameters
+      CodeUri: functions/jobs/job-search-by-params/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # wdr-job-create
+  WdrJobCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-create"
+      Description: Create new job
+      CodeUri: functions/jobs/wdr-job-create/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref S3BucketName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  # wdr-job-update-by-id
+  WdrJobUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-update-by-id"
+      Description: Update a job
+      CodeUri: functions/jobs/wdr-job-update-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+          - "@aws-sdk/client-lambda"
+
+  # wdr-job-get-by-id
+  WdrJobGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-get-by-id"
+      Description: Get job data by id
+      CodeUri: functions/jobs/wdr-job-get-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-common-utils"
+          - "@aws-sdk/client-lambda"
+
+  # wdr-job-change-status
+  WdrJobChangeStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-change-status"
+      Description: Change status of job
+      CodeUri: functions/jobs/wdr-job-change-status/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          REPORT_CREATE_FUNCTION_NAME: !Ref CreateReportFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+          - "@aws-sdk/client-lambda"
+
+  # wdr-job-update-multi
+  WdrJobUpdateMultiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-update-multi"
+      Description: Update trade section and sub code for multi job
+      CodeUri: functions/jobs/wdr-job-update-multi/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+  # wdr-job-export-excel
+  WdrJobExportExcelFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-export-excel"
+      Description: Export job to excel by param and header
+      CodeUri: functions/jobs/wdr-job-export-excel/
+      Timeout: 300
+      MemorySize: 1536
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          FILE_KEY: !Ref FileNameTemplate 
+          EXPORT_BUCKET: !Ref S3BucketName
+          JOB_SEARCH_FUNCTION_NAME: !Ref JobSearchFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+          - "@aws-sdk/client-s3"
+
+  # --- Job Functions ---
+  # wdr-get-all-errors-log
+  WdrGetAllErrorsLogFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}get-all-errors-log"
+      Description: Get all errors log
+      CodeUri: functions/be-errors-log/wdr-get-all-errors-log/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+
+  # --- Sub code Functions ---
+  # wdr-sub-code-create
+  WdrSubCodeCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}sub-code-create"
+      Description: Create a new sub code
+      CodeUri: functions/sub-code/wdr-sub-code-create/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          SAP_LINK: !Ref SAPLink
+          SAP_CREATE_WBS_ACTIVITY: !Ref SAPCreateWBSActivityEndPoint
+          SAP_CREATE_WBS: !Ref SAPCreateWBSEndPoint
+          SAP_SECRET_NAME: !Ref SAPSecretsManagerSecretArn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+        - !Ref WdrConnectExternalLayer
+        - !Ref ParametersAndSecretsExtension
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-common-utils"
+          - "wdr-connect-external"
+
+  # wdr-sub-code-sync
+  WdrSubCodeSyncFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}sub-code-sync"
+      Description: Sync sub codes from SAP WBS
+      CodeUri: functions/sub-code/wdr-sub-code-sync/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          SAP_LINK: !Ref SAPLink
+          SAP_WBS: !Ref SAPWBSEndPoint
+          SAP_SECRET_NAME: !Ref SAPSecretsManagerSecretArn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+        - !Ref WdrConnectExternalLayer
+        - !Ref ParametersAndSecretsExtension
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-common-utils"
+          - "wdr-connect-external"
+
+  # sub-code-get-all
+  WdrSubCodeGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}sub-code-get-all"
+      Description: Get all sub codes in project
+      CodeUri: functions/sub-code/sub-code-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # sub-code-get-id
+  WdrSubCodeGetIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}sub-code-get-id"
+      Description: Get sub code by id
+      CodeUri: functions/sub-code/sub-code-get-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+  
+  # sub-code-search-by-params
+  WdrSubCodeSearchByParamsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}sub-code-search-by-params"
+      Description: Search sub codes by parameters
+      CodeUri: functions/sub-code/sub-code-search-by-params/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # ---PDF Generator Function---
+  # wdr-pdf-generator
+  WdrPdfGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}pdf-generator"
+      Description: WDR PDF Generator Lambda Function với chrome-aws-lambda layer
+      CodeUri: functions/webview-to-pdf/wdr-pdf-generator/
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Timeout: 300
+      MemorySize: 1536  # increase memory @sparticuz/chromium
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+        # using chrome-aws-lambda layer in aws
+        - !Ref WdrChromeAwsLambdaLayer
+      Environment:
+        Variables:
+          NODE_ENV: production
+          # handle for chrome-aws-lambda layer
+          CHROMIUM_EXECUTABLE_PATH: /opt/chromium
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+          - "@sparticuz/chromium"  # External using for chrome-aws-lambda layer
+
+    # --- Job Functions ---
+  # wdr-job-merge
+  WdrJobMergeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-merge"
+      Description: Merge job
+      CodeUri: functions/jobs/wdr-job-merge/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_CREATE_FOLDER_FUNCTION_NAME: !Ref CreateFolderFunctionName
+          BUCKET_DELETE_FOLDER_FUNCTION_NAME: !Ref DeleteFolderFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+
+  # --- wdr-job-attachment-byid Functions ---
+  # wdr-job-attachment-byid
+  WdrJobAttachmentByIDFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-job-attachment-byid
+      Description: Get job attachment by id
+      CodeUri: functions/jobs/wdr-job-attachment-byid/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_CREATE_FOLDER_FUNCTION_NAME: !Ref CreateFolderFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+
+  # --- wdr-job-attachment-delele Functions ---
+  # wdr-job-attachment-delele
+  WdrJobAttachmentDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}delete-job-attachment"
+      Description: Merge job
+      CodeUri: functions/jobs/wdr-job-attachment-delele/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_CREATE_FOLDER_FUNCTION_NAME: !Ref CreateFolderFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+
+  # --- wdr-job-attachment-getall-byid Functions ---
+  # wdr-job-attachment-getall-byid
+  WdrJobAttachmentGetAllByIDFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-job-attachment-getall-byid
+      Description: Get all attachment by job id
+      CodeUri: functions/jobs/wdr-job-attachment-getall-byid/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_CREATE_FOLDER_FUNCTION_NAME: !Ref CreateFolderFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+
+  # --- wdr-job-attachment-upload Functions ---
+  # wdr-job-attachment-upload
+  WdrJobAttachmentUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-job-attachment-upload
+      Description: upload list attachment url of job
+      CodeUri: functions/jobs/wdr-job-attachment-upload/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_CREATE_FOLDER_FUNCTION_NAME: !Ref CreateFolderFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+
+  # wbs-job-get-all
+  WbsJobGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-get-all"
+      Description: Get all jobs with filtering options
+      CodeUri: functions/jobs/wbs-job-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  WdrBucketCreateFolderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}bucket-create-folder"
+      Description: Create folder in S3 bucket
+      CodeUri: functions/bucket/bucket-create-folder/
+      Timeout: 300
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref S3BucketName
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer                       
+
+  WdrViewDBSchemaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}view-database-schema"
+      Description: View database schema
+      CodeUri: functions/database/view-database-schema/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+  
+  WdrUpdateDBSchemaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}update-database-schema"
+      Description: Update database schema
+      CodeUri: functions/database/update-database-schema/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref S3BucketName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  WdrConnectDbWithIAMFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}connect-db-with-iam"
+      Description: Connect to RDS database using IAM authentication
+      CodeUri: functions/database/wdr-connect-db-with-iam/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  WdrBucketDeleteFolderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}bucket-delete-folder"
+      Description: Create folder in S3 bucket
+      CodeUri: functions/bucket/bucket-delete-folder/
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref S3BucketName
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+
+  # --- Job Functions ---
+  # wdr-job-delete
+  WdrJobDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-delete"
+      Description: Delete job
+      CodeUri: functions/jobs/wdr-job-delete/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_DELETE_FOLDER_FUNCTION_NAME: !Ref DeleteFolderFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda" 
+
+  # --- wdr-job-attachment-getall-byid Functions ---
+  # wdr-job-attachment-getall-byid
+  WdrJobPhotoGetAllByIDFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-photo-getall-byid"
+      Description: Get all Photo by job id
+      CodeUri: functions/jobs/wdr-job-photo-getall-byid/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_CREATE_FOLDER_FUNCTION_NAME: !Ref CreateFolderFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+
+  # --- wdr-job-photo-delete Functions ---
+  # wdr-job-attachment-delete
+  WdrJobPhotoUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-photo-delete"
+      Description: delete Photo url of job
+      CodeUri: functions/jobs/wdr-job-photo-delete/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_CREATE_FOLDER_FUNCTION_NAME: !Ref CreateFolderFunctionName
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+
+  # --- Pre-defined Functions ---
+  # wdr-pre-defined-get-all
+  WdrPreDefinedGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wdr-pre-defined-get-all
+      Description: Search Pre-defined
+      CodeUri: functions/pre-defined/wdr-pre-defined-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-common-utils"
+
+  # pre-defined-create
+  WdrPreDefinedCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}pre-defined-create"
+      Description: Create a new pre-defined item
+      CodeUri: functions/pre-defined/pre-defined-create/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+        - !Ref WdrErrorCodesLayer
+
+  # pre-defined-get-by-id
+  WdrPreDefinedGetByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}pre-defined-get-by-id"
+      Description: Get a pre-defined item by ID
+      CodeUri: functions/pre-defined/pre-defined-get-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # pre-defined-update-by-id
+  WdrPreDefinedUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}pre-defined-update-by-id"
+      Description: Update a pre-defined item by ID
+      CodeUri: functions/pre-defined/pre-defined-update-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrCommonUtilsLayer
+        - !Ref WdrErrorCodesLayer
+      
+  # pre-defined-delete-by-id
+  WdrPreDefinedDeleteByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}pre-defined-delete-by-id"
+      Description: Delete a pre-defined item by ID
+      CodeUri: functions/pre-defined/pre-defined-delete-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # pre-defined-search-by-params
+  WdrPreDefinedSearchByParamsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}pre-defined-search-by-params"
+      Description: Search for pre-defined items by parameters
+      CodeUri: functions/pre-defined/pre-defined-search-by-params/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+
+  # wdr-get-list-report-combine
+  WdrGetListReportCombineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}get-list-report-combine"
+      Description: wdr get list report combine
+      CodeUri: functions/reports/wdr-get-list-report-combine/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "@aws-sdk/client-lambda"
+          
+  WdrBucketAttachmentProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}bucket-attachment-processor"
+      Description: Create folder in S3 bucket
+      CodeUri: functions/bucket/bucket-attachment-processor/
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref S3BucketName      
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+        - !Ref SharpLayerArn
+
+  WdrBucketCreateThumbnailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}bucket-create-thumbnail"
+      Description: Create folder in S3 bucket
+      CodeUri: functions/bucket/bucket-create-thumbnail/
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref S3BucketName      
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref SharpLayerArn
+
+  WdrJobAttachmentCheckAndProccess:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-attachment-check-and-proccess"
+      Description: job attachment check and proccess
+      CodeUri: functions/jobs/wdr-job-attachment-check-and-proccess/
+      Timeout: 300
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref S3BucketName      
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer        
+        - !Ref SharpLayerArn
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-common-utils"
+
+  WdrJobPhotoCheckAndProccess:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}job-photo-check-and-proccess"
+      Description: job photo check and proccess
+      CodeUri: functions/jobs/wdr-job-photo-check-and-proccess/
+      Timeout: 300
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref S3BucketName      
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer        
+        - !Ref SharpLayerArn
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-common-utils"
+
+  # App-settings
+  # wdr-app-settings-get-all
+  WdrAppSettingsGetAllFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}app-settings-get-all-dev"
+      Description: Get all app settings
+      CodeUri: functions/app-settings/wdr-app-settings-get-all/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr-app-settings-get-by-code
+  WdrAppSettingsGetByCodeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}app-settings-get-by-code-dev"
+      Description: Get app settings by code
+      CodeUri: functions/app-settings/wdr-app-settings-get-by-code/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  # wdr-app-settings-update-by-id
+  WdrAppSettingsUpdateByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}app-settings-update-by-id-dev"
+      Description: Update value app settings by id
+      CodeUri: functions/app-settings/wdr-app-settings-update-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+  
+  # wdr-app-settings-get-all
+  WdrAppSettingsDeleteByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}app-settings-delete-by-id-dev"
+      Description: Delete app settings by id
+      CodeUri: functions/app-settings/wdr-app-settings-delete-by-id/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+
+  #dynamic workflow 
+  WdrApproveStepWFHistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}approve-step-wf-history"
+      Description: wdr-approve-step-wf-history
+      CodeUri: functions/dynamic-workflow/wdr-approve-step-wf-history/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"
+          - "wdr-common-utils"
+
+  WdrDynamicWFReportGetFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}dynamic-wf-report-get"
+      Description: wdr-dynamic-wf-report-get
+      CodeUri: functions/dynamic-workflow/wdr-dynamic-wf-report-get/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"  
+          - "wdr-common-utils"
+
+  WdrDynamicWFReportUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}dynamic-wf-report-update"
+      Description: wdr-dynamic-wf-report-update
+      CodeUri: functions/dynamic-workflow/wdr-dynamic-wf-report-update/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes" 
+          - "wdr-common-utils"
+
+  WdrGetNextApproverFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}get-next-approver"
+      Description: wdr-get-next-approver
+      CodeUri: functions/dynamic-workflow/wdr-get-next-approver/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"  
+          - "wdr-common-utils"
+
+  WdrGetStepWFHistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}get-step-wf-history"
+      Description: wdr-get-step-wf-history
+      CodeUri: functions/dynamic-workflow/wdr-get-step-wf-history/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"  
+          - "wdr-common-utils"
+
+  WdrRejectStepWFHistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}reject-step-wf-history"
+      Description: wdr-reject-step-wf-history
+      CodeUri: functions/dynamic-workflow/wdr-reject-step-wf-history/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"  
+          - "wdr-common-utils"
+
+  WdrSubmitReviewReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ResourceNamePrefix}submit-review-report"
+      Description: wdr-submit-review-report
+      CodeUri: functions/dynamic-workflow/wdr-submit-review-report/
+      Role: !GetAtt WdrLambdaRole.Arn
+      Layers:
+        - !Ref WdrModelsLayer
+        - !Ref WdrConnectDbLayer
+        - !Ref WdrErrorCodesLayer
+        - !Ref WdrCommonUtilsLayer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/index.ts
+        Tsconfig: tsconfig.sam.json
+        External:
+          - "wdr-connect-db"
+          - "wdr-models"
+          - "wdr-error-codes"  
+          - "wdr-common-utils"                                                   

@@ -1,0 +1,22 @@
+# Node.js modules
+node_modules/
+
+# Build output
+dist/
+build/
+# Layer build output
+nodejs/
+
+# AWS Lambda deployment package
+*.zip
+
+# dotenv files
+.env
+.env.local
+
+# VS Code editor folder
+.vscode/
+
+# aws samconfig
+.aws-sam/
+samconfig.toml

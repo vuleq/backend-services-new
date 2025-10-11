@@ -1,0 +1,36 @@
+{
+  "name": "wdr-connect-db",
+  "version": "2.0.0",
+  "description": "WDR Database connection utilities layer - use AWS Secrets Manager or environment variables for configuration",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "npm run clean && npm run copy-deps && npm run compile && npm run create-package",
+    "clean": "rimraf nodejs",
+    "compile": "tsc",
+    "copy-deps": "mkdir nodejs && cd nodejs && npm init -y && npm install pg@^8.16.3 @aws-sdk/client-secrets-manager@^3.490.0 @aws-sdk/rds-signer@^3.490.0 @smithy/node-http-handler@^3.0.0",
+    "create-package": "node -e \"const fs = require('fs'); const path = require('path'); const dir = 'nodejs/node_modules/wdr-connect-db'; fs.mkdirSync(dir, {recursive: true}); fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name: 'wdr-connect-db', version: '1.0.0', main: 'index.js', type: 'commonjs'}, null, 2))\"",
+    "predeploy": "npm run build"
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "layer",
+    "database"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.150",
+    "@types/node": "^24.0.12",
+    "@types/pg": "^8.15.5",
+    "esbuild": "^0.25.6",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.490.0",
+    "@aws-sdk/rds-signer": "^3.490.0",
+    "@smithy/node-http-handler": "^3.3.3",
+    "pg": "^8.16.3"
+  }
+}

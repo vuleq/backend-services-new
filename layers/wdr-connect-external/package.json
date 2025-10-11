@@ -1,0 +1,22 @@
+{
+  "name": "wdr-connect-external",
+  "version": "1.0.0",
+  "description": "Combined services layer with HTTP utilities and external API calls",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "npm run clean && npm run copy-deps && npm run compile && npm run create-package",
+    "clean": "rimraf nodejs",
+    "compile": "tsc",
+    "copy-deps": "mkdir nodejs && cd nodejs && npm init -y && npm install axios@^1.11.0 @aws-sdk/client-secrets-manager@^3.490.0",
+    "create-package": "node -e \"const fs = require('fs'); const path = require('path'); const dir = 'nodejs/node_modules/wdr-connect-external'; fs.mkdirSync(dir, {recursive: true}); fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({name: 'wdr-connect-external', version: '1.0.0', main: 'index.js', type: 'commonjs'}, null, 2))\"",
+    "predeploy": "npm run build"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "@aws-sdk/client-secrets-manager": "^3.490.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.12",
+    "typescript": "^5.8.3"
+  }
+}

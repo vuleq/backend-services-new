@@ -1,0 +1,87 @@
+# name: Deploy to AWS Lambda
+
+# on:
+#   push:
+#     branches:
+#       - main    
+
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+#     env:
+#       AWS_REGION: ${{ vars.AWS_REGION }}
+#       STACK_NAME: ${{ vars.STACK_NAME }}
+#       CREATE_FOLDER_FUNCTION_NAME: ${{ vars.CREATE_FOLDER_FUNCTION_NAME }}
+#       CREATE_REPORT_FUNCTION_NAME: ${{ vars.CREATE_REPORT_FUNCTION_NAME }}
+#       DB_HOST: ${{ vars.DB_HOST }}
+#       DB_NAME: ${{ vars.DB_NAME }}
+#       DB_USER: ${{ vars.DB_USER }}
+#       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+#       DB_PORT: ${{ vars.DB_PORT }}
+#       DB_SSL: ${{ vars.DB_SSL }}
+#       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+#       COGNITO_USER_POOL_ID: ${{ vars.COGNITO_USER_POOL_ID }}
+#       SECURITY_GROUP_IDS: ${{ vars.SECURITY_GROUP_IDS }}
+#       SUBNET_IDS: ${{ vars.SUBNET_IDS }}
+#       S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
+#       WDR_CHROME_AWS_LAMBDA_LAYER: ${{ vars.WDR_CHROME_AWS_LAMBDA_LAYER }}
+#       RESOURCE_NAME_PREFIX: ${{ vars.RESOURCE_NAME_PREFIX }}
+#       SECRETS_MANAGER_SECRET_ARN: ${{ vars.SECRETS_MANAGER_SECRET_ARN }}
+#       WDR_LAMBDA_ROLE: ${{ vars.WDR_LAMBDA_ROLE }}
+#       DEFAULT_PWD: ${{ secrets.DEFAULT_PWD }}
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v3
+
+#       - name: Set up Node.js
+#         uses: actions/setup-node@v3
+#         with:
+#           node-version: '22'
+
+#       - name: Install dependencies
+#         run: npm install
+
+#       - name: Install esbuild globally
+#         run: npm install -g esbuild
+
+#       - name: Build project
+#         run: npm run build
+
+#       - name: Install AWS SAM CLI
+#         run: pip install aws-sam-cli
+
+#       - name: Build with SAM
+#         run: sam build
+
+#       - name: Copy layers
+#         run: npm run copy-layers-linux
+
+#       - name: Deploy to AWS
+#         env:
+#           # AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           # AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
+#         run: |
+#           sam deploy --stack-name ${{ env.STACK_NAME }} --region ${{ env.AWS_REGION }} \
+#             --resolve-s3 \
+#             --no-confirm-changeset \
+#             --capabilities CAPABILITY_NAMED_IAM \
+#             --parameter-overrides \
+#               CreateFolderFunctionName=${{ env.CREATE_FOLDER_FUNCTION_NAME }} \
+#               DBHost=${{ env.DB_HOST }} \
+#               DBName=${{ env.DB_NAME }} \
+#               DBUser=${{ env.DB_USER }} \
+#               DBPassword='${{ secrets.DB_PASSWORD }}' \
+#               DBPort=${{ env.DB_PORT }} \
+#               DBSSL=${{ env.DB_SSL }} \
+#               DBSecretArn=${{ env.SECRETS_MANAGER_SECRET_ARN }} \
+#               JWTSecret=${{ env.JWT_SECRET }} \
+#               CognitoUserPoolId=${{ env.COGNITO_USER_POOL_ID }} \
+#               SecurityGroupIds=${{ env.SECURITY_GROUP_IDS }} \
+#               SubnetIds=${{ env.SUBNET_IDS }} \
+#               S3BucketName=${{ env.S3_BUCKET_NAME }} \
+#               WdrChromeAwsLambdaLayer=${{ env.WDR_CHROME_AWS_LAMBDA_LAYER }} \
+#               ResourceNamePrefix=${{ env.RESOURCE_NAME_PREFIX }} \
+#               SecretsManagerSecretArn=${{ env.SECRETS_MANAGER_SECRET_ARN }} \
+#               WDRLambdaRole=${{ env.WDR_LAMBDA_ROLE }} \
+#               DefaultPwd='${{ env.DEFAULT_PWD }}' 
