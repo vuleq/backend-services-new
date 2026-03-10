@@ -21,3 +21,5 @@ export const handler = async (event: any) => {
     return new LambdaResponse(500, new ApiResponse(false, null, 'Internal server error', error.message));
   }
 };
+
+
