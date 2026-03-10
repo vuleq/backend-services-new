@@ -40,9 +40,14 @@ jobs:
       - name: Detect changed functions
         id: changed
         run: |
-          CHANGED=$(git diff --name-only HEAD~1 HEAD | grep "^src/functions/" | cut -d'/' -f1-4 | sort -u)
-          echo "Changed paths:"
-          echo "$CHANGED"
+          # Handle first commit (no HEAD~1) gracefully
+          if git rev-parse HEAD~1 > /dev/null 2>&1; then
+            CHANGED=$(git diff --name-only HEAD~1 HEAD | grep "^src/functions/" | cut -d'/' -f1-4 | sort -u)
+          else
+            # First commit - deploy all tracked functions
+            CHANGED="src/functions/jobs/job-get-all src/functions/jobs/job-get-by-id"
+          fi
+          echo "Changed paths: $CHANGED"
           echo "changed_paths<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -57,10 +62,18 @@ jobs:
           FUNC_PATH="src/functions/jobs/job-get-all"
 
           echo "Building $FUNC_PATH..."
-          npx tsc --outDir dist/$FUNC_PATH $FUNC_PATH/index.ts 2>/dev/null || \
-          npx esbuild $FUNC_PATH/index.ts --bundle --platform=node --target=node22 \
-            --outfile=dist/$FUNC_PATH/index.js --external:@aws-sdk/* || \
-          cp $FUNC_PATH/index.ts dist/$FUNC_PATH/index.js
+          mkdir -p dist/$FUNC_PATH
+          npx esbuild $FUNC_PATH/index.ts \
+            --bundle \
+            --platform=node \
+            --target=node22 \
+            --outfile=dist/$FUNC_PATH/index.js \
+            --external:@aws-sdk/* \
+            --external:/opt/nodejs/* \
+            --external:/opt/nodejs/api-model \
+            --external:/opt/nodejs/db \
+            --external:/opt/nodejs/error-code \
+            --log-level=warning
 
           echo "Packaging..."
           cd dist/$FUNC_PATH && zip -r ../../function.zip . && cd ../..
@@ -84,10 +97,18 @@ jobs:
           FUNC_PATH="src/functions/jobs/job-get-by-id"
 
           echo "Building $FUNC_PATH..."
-          npx tsc --outDir dist/$FUNC_PATH $FUNC_PATH/index.ts 2>/dev/null || \
-          npx esbuild $FUNC_PATH/index.ts --bundle --platform=node --target=node22 \
-            --outfile=dist/$FUNC_PATH/index.js --external:@aws-sdk/* || \
-          cp $FUNC_PATH/index.ts dist/$FUNC_PATH/index.js
+          mkdir -p dist/$FUNC_PATH
+          npx esbuild $FUNC_PATH/index.ts \
+            --bundle \
+            --platform=node \
+            --target=node22 \
+            --outfile=dist/$FUNC_PATH/index.js \
+            --external:@aws-sdk/* \
+            --external:/opt/nodejs/* \
+            --external:/opt/nodejs/api-model \
+            --external:/opt/nodejs/db \
+            --external:/opt/nodejs/error-code \
+            --log-level=warning
 
           echo "Packaging..."
           cd dist/$FUNC_PATH && zip -r ../../function.zip . && cd ../..
