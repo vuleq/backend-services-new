@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/functions/jobs/job-get-all/**'
       - 'src/functions/jobs/job-get-by-id/**'
+      - 'src/functions/project/project-get-all/**'
       - 'layers/**'
       - '.github/workflows/lambda-deploy.yml'
 
@@ -68,6 +69,12 @@ jobs:
             echo "deploy_job_get_by_id=true" >> $GITHUB_OUTPUT
           else
             echo "deploy_job_get_by_id=false" >> $GITHUB_OUTPUT
+          fi
+
+          if echo "$CHANGED" | grep -q "^src/functions/project/project-get-all"; then
+            echo "deploy_project_get_all=true" >> $GITHUB_OUTPUT
+          else
+            echo "deploy_project_get_all=false" >> $GITHUB_OUTPUT
           fi
 
       # ============================================================
@@ -203,6 +210,38 @@ jobs:
           echo "✅ $FUNC_NAME deployed!"
           rm -f function.zip
 
+      # ============================================================
+      # Lambda 3: project-get-all → vule-project-get-all
+      # ============================================================
+      - name: Build & Deploy project-get-all
+        if: steps.changed.outputs.deploy_project_get_all == 'true'
+        run: |
+          FUNC_NAME="vule-project-get-all"
+          FUNC_PATH="src/functions/project/project-get-all"
+
+          echo "Building $FUNC_PATH..."
+          mkdir -p dist/$FUNC_PATH
+          npx esbuild $FUNC_PATH/index.ts \
+            --bundle \
+            --platform=node \
+            --target=node22 \
+            --outfile=dist/$FUNC_PATH/index.js \
+            --external:@aws-sdk/* \
+            --external:/opt/nodejs/* \
+            --log-level=warning
+
+          echo "Packaging..."
+          cd dist/$FUNC_PATH && zip -r ../../function.zip . && cd ../..
+
+          echo "Deploying to $FUNC_NAME..."
+          aws lambda update-function-code \
+            --function-name "$FUNC_NAME" \
+            --zip-file fileb://function.zip \
+            --region ${{ env.AWS_REGION }}
+
+          echo "✅ $FUNC_NAME deployed!"
+          rm -f function.zip
+
       - name: Summary
         run: |
           echo "## Deploy Summary" >> $GITHUB_STEP_SUMMARY
@@ -211,3 +250,4 @@ jobs:
           echo "| Layers | ${{ steps.changed.outputs.deploy_layers == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| job-get-all | ${{ steps.changed.outputs.deploy_job_get_all == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| job-get-by-id | ${{ steps.changed.outputs.deploy_job_get_by_id == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| project-get-all | ${{ steps.changed.outputs.deploy_project_get_all == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
