@@ -4,10 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/functions/jobs/job-get-all/**'
-      - 'src/functions/jobs/job-get-by-id/**'
-      - 'src/functions/project/project-get-all/**'
+      - 'src/functions/**'
       - 'layers/**'
+      - 'lambda-map.json'
       - '.github/workflows/lambda-deploy.yml'
 
 env:
@@ -43,43 +42,26 @@ jobs:
       - name: Detect changed paths
         id: changed
         run: |
-          # Handle first commit (no HEAD~1)
           if git rev-parse HEAD~1 > /dev/null 2>&1; then
             CHANGED=$(git diff --name-only HEAD~1 HEAD)
           else
             CHANGED=$(git ls-files)
           fi
-          echo "Changed files: $CHANGED"
 
-          # Check layers
           if echo "$CHANGED" | grep -q "^layers/"; then
             echo "deploy_layers=true" >> $GITHUB_OUTPUT
           else
             echo "deploy_layers=false" >> $GITHUB_OUTPUT
           fi
 
-          # Check functions
-          if echo "$CHANGED" | grep -q "^src/functions/jobs/job-get-all"; then
-            echo "deploy_job_get_all=true" >> $GITHUB_OUTPUT
-          else
-            echo "deploy_job_get_all=false" >> $GITHUB_OUTPUT
-          fi
-
-          if echo "$CHANGED" | grep -q "^src/functions/jobs/job-get-by-id"; then
-            echo "deploy_job_get_by_id=true" >> $GITHUB_OUTPUT
-          else
-            echo "deploy_job_get_by_id=false" >> $GITHUB_OUTPUT
-          fi
-
-          if echo "$CHANGED" | grep -q "^src/functions/project/project-get-all"; then
-            echo "deploy_project_get_all=true" >> $GITHUB_OUTPUT
-          else
-            echo "deploy_project_get_all=false" >> $GITHUB_OUTPUT
-          fi
+          CHANGED_FUNCS=$(echo "$CHANGED" | grep "^src/functions/" | awk -F'/' '{print $1"/"$2"/"$3"/"$4}' | sort -u)
+          echo "Changed functions: $CHANGED_FUNCS"
+          echo "changed_funcs<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED_FUNCS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       # ============================================================
-      # LAYERS: Build & Publish tất cả layers
-      # Layer structure: nodejs/<layer-name>/index.js
+      # LAYERS: Build & Publish
       # ============================================================
       - name: Build & Publish Layers
         if: steps.changed.outputs.deploy_layers == 'true'
@@ -88,166 +70,84 @@ jobs:
             LAYER_NAME=$(basename $LAYER_DIR)
             AWS_LAYER_NAME="vule-${LAYER_NAME}-layer"
 
-            echo "Building layer: $LAYER_NAME → $AWS_LAYER_NAME"
-
-            # Build với esbuild
             mkdir -p layer-build/nodejs/${LAYER_NAME}
             npx esbuild ${LAYER_DIR}index.ts \
-              --bundle \
-              --platform=node \
-              --target=node22 \
+              --bundle --platform=node --target=node22 \
               --outfile=layer-build/nodejs/${LAYER_NAME}/index.js \
-              --external:pg \
-              --external:@aws-sdk/* \
-              --log-level=warning
+              --external:pg --external:@aws-sdk/* --log-level=warning
 
-            # Package layer (phải có nodejs/ folder ở root)
-            cd layer-build
-            zip -r ../layer-${LAYER_NAME}.zip nodejs/
-            cd ..
-
-            # Publish new layer version
+            cd layer-build && zip -r ../layer-${LAYER_NAME}.zip nodejs/ && cd ..
             aws lambda publish-layer-version \
               --layer-name "$AWS_LAYER_NAME" \
-              --description "Layer: $LAYER_NAME" \
+              --description "Layer $LAYER_NAME" \
               --zip-file fileb://layer-${LAYER_NAME}.zip \
               --compatible-runtimes nodejs22.x \
               --region ${{ env.AWS_REGION }}
-
-            echo "✅ Layer $AWS_LAYER_NAME published!"
-
-            # Cleanup
+            echo "Published: $AWS_LAYER_NAME"
             rm -rf layer-build layer-${LAYER_NAME}.zip
           done
 
-          # -------------------------------------------------------
-          # Attach latest layer versions to Lambda functions
-          # -------------------------------------------------------
-          echo "Collecting latest layer ARNs..."
           LAYER_ARNS=""
           for LAYER_DIR in layers/*/; do
             LAYER_NAME=$(basename $LAYER_DIR)
-            AWS_LAYER_NAME="vule-${LAYER_NAME}-layer"
-            LAYER_ARN=$(aws lambda list-layer-versions \
-              --layer-name "$AWS_LAYER_NAME" \
+            ARN=$(aws lambda list-layer-versions \
+              --layer-name "vule-${LAYER_NAME}-layer" \
               --query 'LayerVersions[0].LayerVersionArn' \
-              --output text \
-              --region ${{ env.AWS_REGION }})
-            LAYER_ARNS="$LAYER_ARNS $LAYER_ARN"
+              --output text --region ${{ env.AWS_REGION }})
+            LAYER_ARNS="$LAYER_ARNS $ARN"
           done
 
-          echo "Attaching layers to Lambda functions..."
-          for FUNC in "vule-job-get-all-supervisors" "vule-job-get-all-trade-sections"; do
+          jq -r '.[]' lambda-map.json | while read FUNC; do
             aws lambda update-function-configuration \
-              --function-name "$FUNC" \
-              --layers $LAYER_ARNS \
+              --function-name "$FUNC" --layers $LAYER_ARNS \
               --region ${{ env.AWS_REGION }} 2>/dev/null && \
-              echo "✅ Layers attached to $FUNC" || \
-              echo "⚠️ $FUNC not found (will be attached when function is created)"
+              echo "Layers attached: $FUNC" || echo "Warning: $FUNC not found"
           done
 
       # ============================================================
-      # Lambda 1: job-get-all → vule-job-get-all-supervisors
+      # FUNCTIONS: Build & Deploy via lambda-map.json
+      # To add new lambda: just add entry to lambda-map.json
       # ============================================================
-      - name: Build & Deploy job-get-all
-        if: steps.changed.outputs.deploy_job_get_all == 'true'
+      - name: Build & Deploy changed functions
+        if: steps.changed.outputs.changed_funcs != ''
         run: |
-          FUNC_NAME="vule-job-get-all-supervisors"
-          FUNC_PATH="src/functions/jobs/job-get-all"
+          while IFS= read -r FUNC_PATH; do
+            [ -z "$FUNC_PATH" ] && continue
 
-          echo "Building $FUNC_PATH..."
-          mkdir -p dist/$FUNC_PATH
-          npx esbuild $FUNC_PATH/index.ts \
-            --bundle \
-            --platform=node \
-            --target=node22 \
-            --outfile=dist/$FUNC_PATH/index.js \
-            --external:@aws-sdk/* \
-            --external:/opt/nodejs/* \
-            --log-level=warning
+            # Lookup function name from lambda-map.json using jq
+            FUNC_NAME=$(jq -r --arg p "$FUNC_PATH" '.[$p] // ""' lambda-map.json)
 
-          echo "Packaging..."
-          cd dist/$FUNC_PATH && zip -r ../../function.zip . && cd ../..
+            if [ -z "$FUNC_NAME" ]; then
+              echo "No mapping for $FUNC_PATH - add to lambda-map.json"
+              continue
+            fi
 
-          echo "Deploying to $FUNC_NAME..."
-          aws lambda update-function-code \
-            --function-name "$FUNC_NAME" \
-            --zip-file fileb://function.zip \
-            --region ${{ env.AWS_REGION }}
+            echo "Building $FUNC_PATH => $FUNC_NAME"
+            mkdir -p dist/$FUNC_PATH
+            npx esbuild $FUNC_PATH/index.ts \
+              --bundle --platform=node --target=node22 \
+              --outfile=dist/$FUNC_PATH/index.js \
+              --external:@aws-sdk/* --external:'/opt/nodejs/*' \
+              --log-level=warning
 
-          echo "✅ $FUNC_NAME deployed!"
-          rm -f function.zip
+            cd dist/$FUNC_PATH && zip -r ../../function.zip . && cd ../..
+            aws lambda update-function-code \
+              --function-name "$FUNC_NAME" \
+              --zip-file fileb://function.zip \
+              --region ${{ env.AWS_REGION }}
+            echo "Deployed: $FUNC_NAME"
+            rm -f function.zip
 
-      # ============================================================
-      # Lambda 2: job-get-by-id → vule-job-get-all-trade-sections
-      # ============================================================
-      - name: Build & Deploy job-get-by-id
-        if: steps.changed.outputs.deploy_job_get_by_id == 'true'
-        run: |
-          FUNC_NAME="vule-job-get-all-trade-sections"
-          FUNC_PATH="src/functions/jobs/job-get-by-id"
-
-          echo "Building $FUNC_PATH..."
-          mkdir -p dist/$FUNC_PATH
-          npx esbuild $FUNC_PATH/index.ts \
-            --bundle \
-            --platform=node \
-            --target=node22 \
-            --outfile=dist/$FUNC_PATH/index.js \
-            --external:@aws-sdk/* \
-            --external:/opt/nodejs/* \
-            --log-level=warning
-
-          echo "Packaging..."
-          cd dist/$FUNC_PATH && zip -r ../../function.zip . && cd ../..
-
-          echo "Deploying to $FUNC_NAME..."
-          aws lambda update-function-code \
-            --function-name "$FUNC_NAME" \
-            --zip-file fileb://function.zip \
-            --region ${{ env.AWS_REGION }}
-
-          echo "✅ $FUNC_NAME deployed!"
-          rm -f function.zip
-
-      # ============================================================
-      # Lambda 3: project-get-all → vule-project-get-all
-      # ============================================================
-      - name: Build & Deploy project-get-all
-        if: steps.changed.outputs.deploy_project_get_all == 'true'
-        run: |
-          FUNC_NAME="vule-project-get-all"
-          FUNC_PATH="src/functions/project/project-get-all"
-
-          echo "Building $FUNC_PATH..."
-          mkdir -p dist/$FUNC_PATH
-          npx esbuild $FUNC_PATH/index.ts \
-            --bundle \
-            --platform=node \
-            --target=node22 \
-            --outfile=dist/$FUNC_PATH/index.js \
-            --external:@aws-sdk/* \
-            --external:/opt/nodejs/* \
-            --log-level=warning
-
-          echo "Packaging..."
-          cd dist/$FUNC_PATH && zip -r ../../function.zip . && cd ../..
-
-          echo "Deploying to $FUNC_NAME..."
-          aws lambda update-function-code \
-            --function-name "$FUNC_NAME" \
-            --zip-file fileb://function.zip \
-            --region ${{ env.AWS_REGION }}
-
-          echo "✅ $FUNC_NAME deployed!"
-          rm -f function.zip
+          done <<< "${{ steps.changed.outputs.changed_funcs }}"
 
       - name: Summary
         run: |
           echo "## Deploy Summary" >> $GITHUB_STEP_SUMMARY
           echo "| Target | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Layers | ${{ steps.changed.outputs.deploy_layers == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| job-get-all | ${{ steps.changed.outputs.deploy_job_get_all == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| job-get-by-id | ${{ steps.changed.outputs.deploy_job_get_by_id == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| project-get-all | ${{ steps.changed.outputs.deploy_project_get_all == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          [ "${{ steps.changed.outputs.deploy_layers }}" = "true" ] && \
+            echo "| Layers | Deployed |" >> $GITHUB_STEP_SUMMARY || \
+            echo "| Layers | Skipped |" >> $GITHUB_STEP_SUMMARY
+          [ -n "${{ steps.changed.outputs.changed_funcs }}" ] && \
+            echo "| Functions | Deployed |" >> $GITHUB_STEP_SUMMARY || \
+            echo "| Functions | Skipped |" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,5 @@
+{
+  "src/functions/jobs/job-get-all": "vule-job-get-all-supervisors",
+  "src/functions/jobs/job-get-by-id": "vule-job-get-all-trade-sections",
+  "src/functions/project/project-get-all": "vule-project-get-all"
+}
