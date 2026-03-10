@@ -87,21 +87,30 @@ jobs:
             rm -rf layer-build layer-${LAYER_NAME}.zip
           done
 
-          LAYER_ARNS=""
-          for LAYER_DIR in layers/*/; do
-            LAYER_NAME=$(basename $LAYER_DIR)
-            ARN=$(aws lambda list-layer-versions \
-              --layer-name "vule-${LAYER_NAME}-layer" \
-              --query 'LayerVersions[0].LayerVersionArn' \
-              --output text --region ${{ env.AWS_REGION }})
-            LAYER_ARNS="$LAYER_ARNS $ARN"
-          done
+          # Attach layers per-function based on lambda-map.json
+          # Each function only gets the layers it needs (max 5 per Lambda)
+          jq -r 'to_entries[] | .value.function_name + "|" + (.value.layers | join(","))' lambda-map.json | \
+          while IFS='|' read -r FUNC_NAME LAYER_NAMES; do
+            [ -z "$FUNC_NAME" ] && continue
 
-          jq -r '.[]' lambda-map.json | while read FUNC; do
-            aws lambda update-function-configuration \
-              --function-name "$FUNC" --layers $LAYER_ARNS \
-              --region ${{ env.AWS_REGION }} 2>/dev/null && \
-              echo "Layers attached: $FUNC" || echo "Warning: $FUNC not found"
+            # Build ARN list for this function's layers
+            FUNC_LAYER_ARNS=""
+            IFS=',' read -ra LAYERS <<< "$LAYER_NAMES"
+            for LAYER_NAME in "${LAYERS[@]}"; do
+              ARN=$(aws lambda list-layer-versions \
+                --layer-name "vule-${LAYER_NAME}-layer" \
+                --query 'LayerVersions[0].LayerVersionArn' \
+                --output text --region ${{ env.AWS_REGION }} 2>/dev/null)
+              [ -n "$ARN" ] && [ "$ARN" != "None" ] && FUNC_LAYER_ARNS="$FUNC_LAYER_ARNS $ARN"
+            done
+
+            if [ -n "$FUNC_LAYER_ARNS" ]; then
+              aws lambda update-function-configuration \
+                --function-name "$FUNC_NAME" --layers $FUNC_LAYER_ARNS \
+                --region ${{ env.AWS_REGION }} 2>/dev/null && \
+                echo "Layers [${LAYER_NAMES}] attached to $FUNC_NAME" || \
+                echo "Warning: $FUNC_NAME not found"
+            fi
           done
 
       # ============================================================
@@ -114,8 +123,8 @@ jobs:
           while IFS= read -r FUNC_PATH; do
             [ -z "$FUNC_PATH" ] && continue
 
-            # Lookup function name from lambda-map.json using jq
-            FUNC_NAME=$(jq -r --arg p "$FUNC_PATH" '.[$p] // ""' lambda-map.json)
+            # Lookup function name from new lambda-map.json structure
+            FUNC_NAME=$(jq -r --arg p "$FUNC_PATH" '.[$p].function_name // ""' lambda-map.json)
 
             if [ -z "$FUNC_NAME" ]; then
               echo "No mapping for $FUNC_PATH - add to lambda-map.json"

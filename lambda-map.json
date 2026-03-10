@@ -1,24 +1,90 @@
 {
-  "src/functions/jobs/job-create": "vule-job-create",
-  "src/functions/jobs/job-get-all": "vule-job-get-all-supervisors",
-  "src/functions/jobs/job-get-by-id": "vule-job-get-all-trade-sections",
-  "src/functions/jobs/job-search-by-parameters": "vule-job-search-by-parameters",
-  "src/functions/jobs/job-update-by-id": "vule-job-update-by-id",
-  "src/functions/project/project-get-all": "vule-project-get-all",
-  "src/functions/project/project-get-by-id": "vule-project-get-by-id",
-  "src/functions/project/project-search-by-parameters": "vule-project-search-by-parameters",
-  "src/functions/project/project-update-by-id": "vule-project-update-by-id",
-  "src/functions/report/report_create_new_template": "vule-report-create-new-template",
-  "src/functions/report/report_delete_report_by_id": "vule-report-delete-report-by-id",
-  "src/functions/report/report_get_report_by_id": "vule-report-get-report-by-id",
-  "src/functions/report/report_search_report": "vule-report-search-report",
-  "src/functions/report/report_update_report_by_id": "vule-report-update-report-by-id",
-  "src/functions/trade-section/trade-section-create": "vule-trade-section-create",
-  "src/functions/trade-section/trade-section-delete-by-id": "vule-trade-section-delete-by-id",
-  "src/functions/trade-section/trade-section-get-all": "vule-trade-section-get-all",
-  "src/functions/trade-section/trade-section-get-by-id": "vule-trade-section-get-by-id",
-  "src/functions/trade-section/trade-section-search-by-params": "vule-trade-section-search-by-params",
-  "src/functions/trade-section/trade-section-update-by-id": "vule-trade-section-update-by-id",
-  "src/functions/user/user-get-user-by-id": "vule-user-get-user-by-id",
-  "src/functions/user/user-search-users-by-parameters": "vule-user-search-users-by-parameters"
+  "src/functions/jobs/job-create": {
+    "function_name": "vule-job-create",
+    "layers": ["db", "api-model", "error-code"]
+  },
+  "src/functions/jobs/job-get-all": {
+    "function_name": "vule-job-get-all-supervisors",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/jobs/job-get-by-id": {
+    "function_name": "vule-job-get-all-trade-sections",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/jobs/job-search-by-parameters": {
+    "function_name": "vule-job-search-by-parameters",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/jobs/job-update-by-id": {
+    "function_name": "vule-job-update-by-id",
+    "layers": ["db", "api-model", "error-code"]
+  },
+  "src/functions/project/project-get-all": {
+    "function_name": "vule-project-get-all",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/project/project-get-by-id": {
+    "function_name": "vule-project-get-by-id",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/project/project-search-by-parameters": {
+    "function_name": "vule-project-search-by-parameters",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/project/project-update-by-id": {
+    "function_name": "vule-project-update-by-id",
+    "layers": ["db", "api-model", "error-code"]
+  },
+  "src/functions/report/report_create_new_template": {
+    "function_name": "vule-report-create-new-template",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/report/report_delete_report_by_id": {
+    "function_name": "vule-report-delete-report-by-id",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/report/report_get_report_by_id": {
+    "function_name": "vule-report-get-report-by-id",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/report/report_search_report": {
+    "function_name": "vule-report-search-report",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/report/report_update_report_by_id": {
+    "function_name": "vule-report-update-report-by-id",
+    "layers": ["db", "api-model", "error-code"]
+  },
+  "src/functions/trade-section/trade-section-create": {
+    "function_name": "vule-trade-section-create",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/trade-section/trade-section-delete-by-id": {
+    "function_name": "vule-trade-section-delete-by-id",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/trade-section/trade-section-get-all": {
+    "function_name": "vule-trade-section-get-all",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/trade-section/trade-section-get-by-id": {
+    "function_name": "vule-trade-section-get-by-id",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/trade-section/trade-section-search-by-params": {
+    "function_name": "vule-trade-section-search-by-params",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/trade-section/trade-section-update-by-id": {
+    "function_name": "vule-trade-section-update-by-id",
+    "layers": ["db", "api-model", "error-code"]
+  },
+  "src/functions/user/user-get-user-by-id": {
+    "function_name": "vule-user-get-user-by-id",
+    "layers": ["db", "api-model"]
+  },
+  "src/functions/user/user-search-users-by-parameters": {
+    "function_name": "vule-user-search-users-by-parameters",
+    "layers": ["db", "api-model"]
+  }
 }
