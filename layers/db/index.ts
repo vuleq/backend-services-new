@@ -1,3 +1,4 @@
+// Updated: 2026-03-10 - test layer deploy pipeline
 import { Pool, PoolConfig } from 'pg';
 
 let isPoolInitialized = false;
