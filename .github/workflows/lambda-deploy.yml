@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/functions/jobs/job-get-all/**'
       - 'src/functions/jobs/job-get-by-id/**'
+      - 'layers/**'
 
 env:
   AWS_REGION: us-east-2
@@ -37,26 +38,85 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Detect changed functions
+      - name: Detect changed paths
         id: changed
         run: |
-          # Handle first commit (no HEAD~1) gracefully
+          # Handle first commit (no HEAD~1)
           if git rev-parse HEAD~1 > /dev/null 2>&1; then
-            CHANGED=$(git diff --name-only HEAD~1 HEAD | grep "^src/functions/" | cut -d'/' -f1-4 | sort -u)
+            CHANGED=$(git diff --name-only HEAD~1 HEAD)
           else
-            # First commit - deploy all tracked functions
-            CHANGED="src/functions/jobs/job-get-all src/functions/jobs/job-get-by-id"
+            CHANGED=$(git ls-files)
           fi
-          echo "Changed paths: $CHANGED"
-          echo "changed_paths<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "Changed files: $CHANGED"
+
+          # Check layers
+          if echo "$CHANGED" | grep -q "^layers/"; then
+            echo "deploy_layers=true" >> $GITHUB_OUTPUT
+          else
+            echo "deploy_layers=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check functions
+          if echo "$CHANGED" | grep -q "^src/functions/jobs/job-get-all"; then
+            echo "deploy_job_get_all=true" >> $GITHUB_OUTPUT
+          else
+            echo "deploy_job_get_all=false" >> $GITHUB_OUTPUT
+          fi
+
+          if echo "$CHANGED" | grep -q "^src/functions/jobs/job-get-by-id"; then
+            echo "deploy_job_get_by_id=true" >> $GITHUB_OUTPUT
+          else
+            echo "deploy_job_get_by_id=false" >> $GITHUB_OUTPUT
+          fi
+
+      # ============================================================
+      # LAYERS: Build & Publish tất cả layers
+      # Layer structure: nodejs/<layer-name>/index.js
+      # ============================================================
+      - name: Build & Publish Layers
+        if: steps.changed.outputs.deploy_layers == 'true'
+        run: |
+          for LAYER_DIR in layers/*/; do
+            LAYER_NAME=$(basename $LAYER_DIR)
+            AWS_LAYER_NAME="vule-${LAYER_NAME}-layer"
+
+            echo "Building layer: $LAYER_NAME → $AWS_LAYER_NAME"
+
+            # Build với esbuild
+            mkdir -p layer-build/nodejs/${LAYER_NAME}
+            npx esbuild ${LAYER_DIR}index.ts \
+              --bundle \
+              --platform=node \
+              --target=node22 \
+              --outfile=layer-build/nodejs/${LAYER_NAME}/index.js \
+              --external:pg \
+              --external:@aws-sdk/* \
+              --log-level=warning
+
+            # Package layer (phải có nodejs/ folder ở root)
+            cd layer-build
+            zip -r ../layer-${LAYER_NAME}.zip nodejs/
+            cd ..
+
+            # Publish new layer version
+            aws lambda publish-layer-version \
+              --layer-name "$AWS_LAYER_NAME" \
+              --description "Layer: $LAYER_NAME" \
+              --zip-file fileb://layer-${LAYER_NAME}.zip \
+              --compatible-runtimes nodejs22.x \
+              --region ${{ env.AWS_REGION }}
+
+            echo "✅ Layer $AWS_LAYER_NAME published!"
+
+            # Cleanup
+            rm -rf layer-build layer-${LAYER_NAME}.zip
+          done
 
       # ============================================================
       # Lambda 1: job-get-all → vule-job-get-all-supervisors
       # ============================================================
       - name: Build & Deploy job-get-all
-        if: contains(steps.changed.outputs.changed_paths, 'src/functions/jobs/job-get-all')
+        if: steps.changed.outputs.deploy_job_get_all == 'true'
         run: |
           FUNC_NAME="vule-job-get-all-supervisors"
           FUNC_PATH="src/functions/jobs/job-get-all"
@@ -70,9 +130,6 @@ jobs:
             --outfile=dist/$FUNC_PATH/index.js \
             --external:@aws-sdk/* \
             --external:/opt/nodejs/* \
-            --external:/opt/nodejs/api-model \
-            --external:/opt/nodejs/db \
-            --external:/opt/nodejs/error-code \
             --log-level=warning
 
           echo "Packaging..."
@@ -91,7 +148,7 @@ jobs:
       # Lambda 2: job-get-by-id → vule-job-get-all-trade-sections
       # ============================================================
       - name: Build & Deploy job-get-by-id
-        if: contains(steps.changed.outputs.changed_paths, 'src/functions/jobs/job-get-by-id')
+        if: steps.changed.outputs.deploy_job_get_by_id == 'true'
         run: |
           FUNC_NAME="vule-job-get-all-trade-sections"
           FUNC_PATH="src/functions/jobs/job-get-by-id"
@@ -105,9 +162,6 @@ jobs:
             --outfile=dist/$FUNC_PATH/index.js \
             --external:@aws-sdk/* \
             --external:/opt/nodejs/* \
-            --external:/opt/nodejs/api-model \
-            --external:/opt/nodejs/db \
-            --external:/opt/nodejs/error-code \
             --log-level=warning
 
           echo "Packaging..."
@@ -125,4 +179,8 @@ jobs:
       - name: Summary
         run: |
           echo "## Deploy Summary" >> $GITHUB_STEP_SUMMARY
-          echo "Changed functions deployed to AWS Lambda us-east-2" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Layers | ${{ steps.changed.outputs.deploy_layers == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| job-get-all | ${{ steps.changed.outputs.deploy_job_get_all == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| job-get-by-id | ${{ steps.changed.outputs.deploy_job_get_by_id == 'true' && '✅ Deployed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
