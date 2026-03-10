@@ -113,6 +113,32 @@ jobs:
             rm -rf layer-build layer-${LAYER_NAME}.zip
           done
 
+          # -------------------------------------------------------
+          # Attach latest layer versions to Lambda functions
+          # -------------------------------------------------------
+          echo "Collecting latest layer ARNs..."
+          LAYER_ARNS=""
+          for LAYER_DIR in layers/*/; do
+            LAYER_NAME=$(basename $LAYER_DIR)
+            AWS_LAYER_NAME="vule-${LAYER_NAME}-layer"
+            LAYER_ARN=$(aws lambda list-layer-versions \
+              --layer-name "$AWS_LAYER_NAME" \
+              --query 'LayerVersions[0].LayerVersionArn' \
+              --output text \
+              --region ${{ env.AWS_REGION }})
+            LAYER_ARNS="$LAYER_ARNS $LAYER_ARN"
+          done
+
+          echo "Attaching layers to Lambda functions..."
+          for FUNC in "vule-job-get-all-supervisors" "vule-job-get-all-trade-sections"; do
+            aws lambda update-function-configuration \
+              --function-name "$FUNC" \
+              --layers $LAYER_ARNS \
+              --region ${{ env.AWS_REGION }} 2>/dev/null && \
+              echo "✅ Layers attached to $FUNC" || \
+              echo "⚠️ $FUNC not found (will be attached when function is created)"
+          done
+
       # ============================================================
       # Lambda 1: job-get-all → vule-job-get-all-supervisors
       # ============================================================
