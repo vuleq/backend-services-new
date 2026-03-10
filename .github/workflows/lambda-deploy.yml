@@ -1,0 +1,107 @@
+name: Lambda Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/functions/jobs/job-get-all/**'
+      - 'src/functions/jobs/job-get-by-id/**'
+
+env:
+  AWS_REGION: us-east-2
+  NODE_VERSION: '22'
+
+jobs:
+  deploy:
+    name: Build & Deploy Lambda
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Detect changed functions
+        id: changed
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD | grep "^src/functions/" | cut -d'/' -f1-4 | sort -u)
+          echo "Changed paths:"
+          echo "$CHANGED"
+          echo "changed_paths<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # ============================================================
+      # Lambda 1: job-get-all → vule-job-get-all-supervisors
+      # ============================================================
+      - name: Build & Deploy job-get-all
+        if: contains(steps.changed.outputs.changed_paths, 'src/functions/jobs/job-get-all')
+        run: |
+          FUNC_NAME="vule-job-get-all-supervisors"
+          FUNC_PATH="src/functions/jobs/job-get-all"
+
+          echo "Building $FUNC_PATH..."
+          npx tsc --outDir dist/$FUNC_PATH $FUNC_PATH/index.ts 2>/dev/null || \
+          npx esbuild $FUNC_PATH/index.ts --bundle --platform=node --target=node22 \
+            --outfile=dist/$FUNC_PATH/index.js --external:@aws-sdk/* || \
+          cp $FUNC_PATH/index.ts dist/$FUNC_PATH/index.js
+
+          echo "Packaging..."
+          cd dist/$FUNC_PATH && zip -r ../../function.zip . && cd ../..
+
+          echo "Deploying to $FUNC_NAME..."
+          aws lambda update-function-code \
+            --function-name "$FUNC_NAME" \
+            --zip-file fileb://function.zip \
+            --region ${{ env.AWS_REGION }}
+
+          echo "✅ $FUNC_NAME deployed!"
+          rm -f function.zip
+
+      # ============================================================
+      # Lambda 2: job-get-by-id → vule-job-get-all-trade-sections
+      # ============================================================
+      - name: Build & Deploy job-get-by-id
+        if: contains(steps.changed.outputs.changed_paths, 'src/functions/jobs/job-get-by-id')
+        run: |
+          FUNC_NAME="vule-job-get-all-trade-sections"
+          FUNC_PATH="src/functions/jobs/job-get-by-id"
+
+          echo "Building $FUNC_PATH..."
+          npx tsc --outDir dist/$FUNC_PATH $FUNC_PATH/index.ts 2>/dev/null || \
+          npx esbuild $FUNC_PATH/index.ts --bundle --platform=node --target=node22 \
+            --outfile=dist/$FUNC_PATH/index.js --external:@aws-sdk/* || \
+          cp $FUNC_PATH/index.ts dist/$FUNC_PATH/index.js
+
+          echo "Packaging..."
+          cd dist/$FUNC_PATH && zip -r ../../function.zip . && cd ../..
+
+          echo "Deploying to $FUNC_NAME..."
+          aws lambda update-function-code \
+            --function-name "$FUNC_NAME" \
+            --zip-file fileb://function.zip \
+            --region ${{ env.AWS_REGION }}
+
+          echo "✅ $FUNC_NAME deployed!"
+          rm -f function.zip
+
+      - name: Summary
+        run: |
+          echo "## Deploy Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Changed functions deployed to AWS Lambda us-east-2" >> $GITHUB_STEP_SUMMARY
